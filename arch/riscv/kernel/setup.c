@@ -21,6 +21,7 @@
 #include <linux/efi.h>
 #include <linux/crash_dump.h>
 
+#include <asm/alternative.h>
 #include <asm/cpu_ops.h>
 #include <asm/early_ioremap.h>
 #include <asm/pgtable.h>
@@ -296,6 +297,7 @@ void __init setup_arch(char **cmdline_p)
 
 	riscv_fill_hwcap();
 	riscv_tlbflush_init();
+	apply_boot_alternatives();
 }
 
 static int __init topology_init(void)
