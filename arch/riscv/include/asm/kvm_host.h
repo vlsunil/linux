@@ -181,6 +181,7 @@ struct kvm_vcpu_csr {
 	unsigned long hviph;
 	unsigned long hviprio1h;
 	unsigned long hviprio2h;
+	u64 vstimecmp;
 };
 
 struct kvm_vcpu_arch {
