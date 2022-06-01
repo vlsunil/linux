@@ -762,7 +762,11 @@ enum acpi_madt_type {
 	ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR = 14,
 	ACPI_MADT_TYPE_GENERIC_TRANSLATOR = 15,
 	ACPI_MADT_TYPE_MULTIPROC_WAKEUP = 16,
-	ACPI_MADT_TYPE_RESERVED = 17	/* 17 and greater are reserved */
+	ACPI_MADT_TYPE_RINTC = 24,
+	ACPI_MADT_TYPE_IMSIC = 25,
+	ACPI_MADT_TYPE_IMSIC_GROUP = 26,
+	ACPI_MADT_TYPE_APLIC = 27,
+	ACPI_MADT_TYPE_RESERVED = 28	/* 28 and greater are reserved */
 };
 
 /*
@@ -988,6 +992,52 @@ struct acpi_madt_multiproc_wakeup_mailbox {
 	u64 wakeup_vector;
 	u8 reserved_os[ACPI_MULTIPROC_WAKEUP_MB_OS_SIZE];	/* reserved for OS use */
 	u8 reserved_firmware[ACPI_MULTIPROC_WAKEUP_MB_FIRMWARE_SIZE];	/* reserved for firmware use */
+};
+
+/* RISC-V INTC */
+struct acpi_madt_rintc {
+	struct acpi_subtable_header header;
+	u8  version;
+	u8  reserved;
+	u32 flags;
+	u64 hartid;
+	u32 uid;
+};
+
+/* RISC-V IMSIC Group */
+struct acpi_madt_imsic_group {
+	struct acpi_subtable_header header;
+	u8  version;
+	u8  reserved;
+	u16 num_interrupt_id;
+	u16 ipi_id;
+	u32 total_num_harts;
+	u8  hart_index_bits;
+	u8  group_index_bits;
+	u8  guest_index_bits;
+	u8 group_index_shift;
+};
+
+/* RISC-V IMSIC */
+struct acpi_madt_imsic {
+	struct acpi_subtable_header header;
+	u8  version;
+	u8  reserved;
+	u32 imsic_size;
+	u64 imsic_addr;
+};
+
+/* RISC-V APLIC */
+struct acpi_madt_aplic {
+	struct acpi_subtable_header header;
+	u8 id;
+	u8 version;
+	u16 reserved;
+	u16 global_irq_base;
+	u16 num_interrupts;
+	u16 reserved2;
+	u32 aplic_size;
+	u64 aplic_addr;
 };
 
 #define ACPI_MP_WAKE_COMMAND_WAKEUP    1
