@@ -72,3 +72,4 @@ obj-$(CONFIG_JUMP_LABEL)	+= jump_label.o
 obj-$(CONFIG_EFI)		+= efi.o
 
 obj-$(CONFIG_ACPI)              += acpi.o
+obj-$(CONFIG_PCI)               += pci.o
