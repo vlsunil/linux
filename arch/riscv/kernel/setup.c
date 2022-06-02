@@ -8,6 +8,7 @@
  *  Nick Kossifidis <mick@ics.forth.gr>
  */
 
+#include <linux/acpi.h>
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/memblock.h>
@@ -295,7 +296,11 @@ void __init setup_arch(char **cmdline_p)
 	setup_smp();
 #endif
 
-	riscv_fill_hwcap();
+	if (acpi_disabled)
+		riscv_fill_hwcap();
+	else
+		riscv_acpi_fill_hwcap();
+
 	riscv_tlbflush_init();
 	apply_boot_alternatives();
 }
