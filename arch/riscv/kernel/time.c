@@ -15,7 +15,7 @@
 unsigned long riscv_timebase __ro_after_init;
 EXPORT_SYMBOL_GPL(riscv_timebase);
 
-void __init time_init(void)
+static void of_time_init(void)
 {
 	struct device_node *cpu;
 	u32 prop;
@@ -32,6 +32,11 @@ void __init time_init(void)
 	timer_probe();
 
 	tick_setup_hrtimer_broadcast();
+}
+
+void __init time_init(void)
+{
+	of_time_init();
 }
 
 void clocksource_arch_init(struct clocksource *cs)
