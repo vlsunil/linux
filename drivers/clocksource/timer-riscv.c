@@ -7,6 +7,7 @@
  * either be read from the "time" and "timeh" CSRs, and can use the SBI to
  * setup events, or directly accessed using MMIO registers.
  */
+#include <linux/acpi.h>
 #include <linux/clocksource.h>
 #include <linux/clockchips.h>
 #include <linux/cpu.h>
@@ -188,3 +189,57 @@ static int __init riscv_timer_init_dt(struct device_node *n)
 }
 
 TIMER_OF_DECLARE(riscv_timer, "riscv", riscv_timer_init_dt);
+
+#ifdef CONFIG_ACPI
+static int __init riscv_timer_acpi_init(struct acpi_table_header *table)
+{
+	int error = 0;
+	struct acpi_table_rhct *rhct;
+	struct irq_domain *domain;
+
+	rhct = container_of(table, struct acpi_table_rhct, header);
+	riscv_timebase = rhct->timebase_freq;
+
+	domain = irq_find_matching_fwnode(riscv_get_intc_hwnode(),
+					  DOMAIN_BUS_ANY);
+	if (!domain) {
+		pr_err("Failed to find INTC IRQ root domain\n");
+		return -ENODEV;
+	}
+
+	riscv_clock_event_irq = irq_create_mapping(domain, RV_IRQ_TIMER);
+	if (!riscv_clock_event_irq) {
+		pr_err("Failed to map timer interrupt\n");
+		return -ENODEV;
+	}
+
+	error = clocksource_register_hz(&riscv_clocksource, riscv_timebase);
+	if (error) {
+		pr_err("RISCV timer register failed [%d]\n", error);
+		return error;
+	}
+
+	sched_clock_register(riscv_sched_clock, 64, riscv_timebase);
+
+	error = request_percpu_irq(riscv_clock_event_irq,
+				    riscv_timer_interrupt,
+				    "riscv-timer", &riscv_clock_event);
+	if (error) {
+		pr_err("registering percpu irq failed [%d]\n", error);
+		return error;
+	}
+	error = cpuhp_setup_state(CPUHP_AP_RISCV_TIMER_STARTING,
+			 "clockevents/riscv/timer:starting",
+			 riscv_timer_starting_cpu, riscv_timer_dying_cpu);
+	if (error)
+		pr_err("cpu hp setup state failed for RISCV timer [%d]\n", error);
+
+	if (riscv_isa_extension_available(NULL, SSTC)) {
+		pr_info("Timer interrupt in S-mode is available via sstc extension\n");
+		static_branch_enable(&riscv_sstc_available);
+	}
+
+	return error;
+}
+TIMER_ACPI_DECLARE(aclint_mtimer, ACPI_SIG_RHCT, riscv_timer_acpi_init);
+#endif
