@@ -45,6 +45,7 @@
 #define ACPI_SIG_PRMT           "PRMT"	/* Platform Runtime Mechanism Table */
 #define ACPI_SIG_RASF           "RASF"	/* RAS Feature table */
 #define ACPI_SIG_RGRT           "RGRT"	/* Regulatory Graphics Resource Table */
+#define ACPI_SIG_RHCT           "RHCT"  /* RISC-V Hart Capabilities Table */
 #define ACPI_SIG_SBST           "SBST"	/* Smart Battery Specification Table */
 #define ACPI_SIG_SDEI           "SDEI"	/* Software Delegated Exception Interface Table */
 #define ACPI_SIG_SDEV           "SDEV"	/* Secure Devices table */
@@ -2555,6 +2556,26 @@ struct acpi_table_tdel {
 	u32 reserved;
 	u64 log_area_minimum_length;
 	u64 log_area_start_address;
+};
+
+/*******************************************************************************
+ *
+ * RHCT - RISC-V Hart Capabilities Table
+ *
+ ******************************************************************************/
+
+struct acpi_table_rhct {
+	struct acpi_table_header header;	/* Common ACPI table header */
+	u32 flags;
+	u64 timebase_freq;
+};
+
+struct acpi_rhct_hart_info {
+	u16 length;
+	u8 version;
+	u8 reserved;
+	u32 acpi_proc_id;
+	char isa[];
 };
 
 /* Reset to default packing */
