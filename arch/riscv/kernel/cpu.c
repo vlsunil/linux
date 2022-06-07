@@ -3,6 +3,7 @@
  * Copyright (C) 2012 Regents of the University of California
  */
 
+#include <linux/acpi.h>
 #include <linux/init.h>
 #include <linux/seq_file.h>
 #include <linux/of.h>
@@ -175,6 +176,37 @@ static void c_stop(struct seq_file *m, void *v)
 {
 }
 
+#ifdef CONFIG_ACPI
+void acpi_print_hart_info(struct seq_file *m,
+			  struct acpi_table_header *table_hdr,
+			  unsigned long cpu)
+{
+	struct acpi_rhct_hart_info *entry;
+	unsigned long table_end = (unsigned long)table_hdr + table_hdr->length;
+	u32 acpi_cpu_id = get_acpi_id_for_cpu(cpu);
+
+	entry = ACPI_ADD_PTR(struct acpi_rhct_hart_info, table_hdr,
+			     sizeof(struct acpi_table_rhct));
+	while ((unsigned long)entry + entry->length <= table_end) {
+
+		if (entry->length == 0) {
+			pr_warn("Invalid zero length subtable\n");
+			break;
+		}
+		if (acpi_cpu_id == entry->acpi_proc_id) {
+			print_isa(m, entry->isa);
+
+			print_mmu(m);
+			seq_puts(m, "\n");
+			return;
+		}
+		entry = ACPI_ADD_PTR(struct acpi_rhct_hart_info, entry,
+				entry->length);
+	}
+
+}
+#endif
+
 static int c_show(struct seq_file *m, void *v)
 {
 	unsigned long cpu_id = (unsigned long)v - 1;
@@ -183,14 +215,30 @@ static int c_show(struct seq_file *m, void *v)
 
 	seq_printf(m, "processor\t: %lu\n", cpu_id);
 	seq_printf(m, "hart\t\t: %lu\n", cpuid_to_hartid_map(cpu_id));
-	if (!of_property_read_string(node, "riscv,isa", &isa))
-		print_isa(m, isa);
-	print_mmu(m);
-	if (!of_property_read_string(node, "compatible", &compat)
-	    && strcmp(compat, "riscv"))
-		seq_printf(m, "uarch\t\t: %s\n", compat);
-	seq_puts(m, "\n");
-	of_node_put(node);
+	if (acpi_disabled) {
+		if (!of_property_read_string(node, "riscv,isa", &isa))
+			print_isa(m, isa);
+		print_mmu(m);
+		if (!of_property_read_string(node, "compatible", &compat)
+		    && strcmp(compat, "riscv"))
+			seq_printf(m, "uarch\t\t: %s\n", compat);
+		seq_puts(m, "\n");
+		of_node_put(node);
+	}
+#ifdef CONFIG_ACPI
+	else {
+		struct acpi_table_header *table;
+		acpi_status status;
+
+		status = acpi_get_table(ACPI_SIG_RHCT, 0, &table);
+		if (ACPI_FAILURE(status)) {
+			pr_warn_once("No RHCT table found, CPU capabilities may be inaccurate\n");
+			return -1;
+		}
+		acpi_print_hart_info(m, table, cpu_id);
+		acpi_put_table(table);
+	}
+#endif
 
 	return 0;
 }
