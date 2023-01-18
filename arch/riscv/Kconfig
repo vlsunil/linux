@@ -52,7 +52,7 @@ config RISCV
 	select CLONE_BACKWARDS
 	select CLINT_TIMER if !MMU
 	select COMMON_CLK
-	select CPU_PM if CPU_IDLE
+	select CPU_PM if (SUSPEND || CPU_IDLE)
 	select EDAC_SUPPORT
 	select GENERIC_ARCH_TOPOLOGY
 	select GENERIC_ATOMIC64 if !64BIT
@@ -689,6 +689,9 @@ config PORTABLE
 	select EFI
 	select OF
 	select MMU
+
+config ARCH_SUSPEND_POSSIBLE
+	def_bool RISCV_SBI
 
 menu "Power management options"
 
