@@ -721,6 +721,30 @@ static inline pmd_t pmdp_establish(struct vm_area_struct *vma,
 	page_table_check_pmd_set(vma->vm_mm, address, pmdp, pmd);
 	return __pmd(atomic_long_xchg((atomic_long_t *)pmdp, pmd_val(pmd)));
 }
+
+#define pmdp_collapse_flush pmdp_collapse_flush
+static inline pmd_t pmdp_collapse_flush(struct vm_area_struct *vma,
+					unsigned long address, pmd_t *pmdp)
+{
+	pmd_t pmd = pmdp_huge_get_and_clear(vma->vm_mm, address, pmdp);
+
+	/*
+	 * When leaf PTE enteries (regular pages) are collapsed into a leaf
+	 * PMD entry (huge page), a valid non-leaf PTE is converted into a
+	 * valid leaf PTE at the level 1 page table. The RISC-V privileged v1.12
+	 * specification allows implementations to cache valid non-leaf PTEs,
+	 * but the section "4.2.1 Supervisor Memory-Management Fence
+	 * Instruction" recommends the following:
+	 * "If software modifies a non-leaf PTE, it should execute SFENCE.VMA
+	 * with rs1=x0. If any PTE along the traversal path had its G bit set,
+	 * rs2 must be x0; otherwise, rs2 should be set to the ASID for which
+	 * the translation is being modified."
+	 * Based on the above recommendation, we should do full flush whenever
+	 * leaf PTE entries are collapsed into a leaf PMD entry.
+	 */
+	flush_tlb_mm(vma->vm_mm);
+	return pmd;
+}
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
 /*
