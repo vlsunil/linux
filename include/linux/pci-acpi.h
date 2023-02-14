@@ -132,6 +132,15 @@ static inline void pci_acpi_remove_edr_notifier(struct pci_dev *pdev) { }
 
 int pci_acpi_set_companion_lookup_hook(struct acpi_device *(*func)(struct pci_dev *));
 void pci_acpi_clear_companion_lookup_hook(void);
+int gen_raw_pci_read(unsigned int domain, unsigned int bus,
+		     unsigned int devfn, int reg, int len, u32 *val);
+int gen_raw_pci_write(unsigned int domain, unsigned int bus,
+		      unsigned int devfn, int reg, int len, u32 val);
+int gen_acpi_pci_bus_find_domain_nr(struct pci_bus *bus);
+
+#if defined(CONFIG_PCI_ECAM) && defined(CONFIG_ACPI_MCFG)
+struct pci_bus *gen_pci_acpi_scan_root(struct acpi_pci_root *root);
+#endif
 
 #else	/* CONFIG_ACPI */
 static inline void acpi_pci_add_bus(struct pci_bus *bus) { }
