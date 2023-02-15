@@ -66,9 +66,30 @@ int acpi_numa_get_nid(unsigned int cpu);
 static inline int acpi_numa_get_nid(unsigned int cpu) { return NUMA_NO_NODE; }
 #endif /* CONFIG_ACPI_NUMA */
 
+#ifdef CONFIG_SMP
+struct acpi_madt_rintc *acpi_get_madt_rintc(int cpu);
+struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu);
+#else
+struct acpi_madt_rintc *acpi_bootcpu_get_madt_rintc(int cpu);
+#define acpi_get_madt_rintc  acpi_bootcpu_get_madt_rintc
+#define acpi_cpu_get_madt_rintc  acpi_bootcpu_get_madt_rintc
+#endif
+
+static inline u32 get_acpi_id_for_cpu(int cpu)
+{
+	return	acpi_cpu_get_madt_rintc(cpu)->uid;
+}
+
+int acpi_get_riscv_isa(struct acpi_table_header *table,
+		       unsigned int cpu, const char **isa);
 #else
 static int acpi_get_riscv_isa(struct acpi_table_header *table,
 			      unsigned int cpu, const char **isa)
+{
+	return -1;
+}
+
+static inline u32 get_acpi_id_for_cpu(int cpu)
 {
 	return -1;
 }

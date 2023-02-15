@@ -25,6 +25,45 @@ EXPORT_SYMBOL(acpi_disabled);
 int acpi_pci_disabled = 1;	/* skip ACPI PCI scan and IRQ initialization */
 EXPORT_SYMBOL(acpi_pci_disabled);
 
+#ifndef CONFIG_SMP
+static struct acpi_madt_rintc boot_cpu_madt_rintc;
+
+struct acpi_madt_rintc *acpi_bootcpu_get_madt_rintc(int cpu)
+{
+	struct acpi_table_madt *madt = NULL;
+	unsigned long madt_end, entry;
+	static bool rintc_found = FALSE;
+
+	if (rintc_found)
+		return &boot_cpu_madt_rintc;
+
+	acpi_get_table(ACPI_SIG_MADT, 0,
+		       (struct acpi_table_header **)&madt);
+	if (!madt)
+		return NULL;
+
+	entry = (unsigned long)madt;
+	madt_end = entry + madt->header.length;
+
+	/* Parse all entries looking for a match. */
+
+	entry += sizeof(struct acpi_table_madt);
+	while (entry + sizeof(struct acpi_subtable_header) < madt_end) {
+		struct acpi_subtable_header *header =
+			(struct acpi_subtable_header *)entry;
+		if (header->type == ACPI_MADT_TYPE_RINTC) {
+			boot_cpu_madt_rintc = *(struct acpi_madt_rintc *)header;
+			acpi_put_table((struct acpi_table_header *)madt);
+			rintc_found = TRUE;
+			return &boot_cpu_madt_rintc;
+		}
+		entry += header->length;
+	}
+	acpi_put_table((struct acpi_table_header *)madt);
+	return NULL;
+}
+#endif
+
 /*
  * __acpi_map_table() will be called before paging_init(), so early_ioremap()
  * or early_memremap() should be called here to for ACPI table mapping.
