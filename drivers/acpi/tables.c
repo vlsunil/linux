@@ -226,6 +226,15 @@ void acpi_table_print_madt_entry(struct acpi_subtable_header *header)
 		}
 		break;
 
+	case ACPI_MADT_TYPE_PLIC:
+		{
+			struct acpi_madt_plic *p = (struct acpi_madt_plic *)header;
+
+			pr_debug("PLIC (plic_id[0x%02x] address[%llx] gsi_base[%d])\n",
+				 p->id, p->base_addr, p->gsi_base);
+		}
+		break;
+
 	default:
 		pr_warn("Found unsupported MADT entry (type = 0x%x)\n",
 			header->type);
