@@ -536,7 +536,7 @@ static int aplic_setup_idc(struct aplic_priv *priv)
 				return rc;
 			}
 		} else {
-			rc = acpi_get_aplic_parent_hartid(priv->aplic_id, i, &hartid);
+			rc = acpi_get_ext_intc_parent_hartid(priv->aplic_id, i, true, &hartid);
 			if (rc) {
 				dev_err(dev, "failed to parse hart ID for IDC%d.\n",
 					i);

@@ -69,7 +69,7 @@ int acpi_get_plic_nr_contexts(u8 plic_id);
 int acpi_get_plic_context_id(u8 plic_id, u16 idx);
 struct acpi_madt_rintc *acpi_get_madt_rintc(int cpu);
 struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu);
-int acpi_get_aplic_parent_hartid(u32 aplic_id, int idx, unsigned long *hartid);
+int acpi_get_ext_intc_parent_hartid(u32 ext_intc_id, int idx, bool aplic, unsigned long *hartid);
 static inline u32 get_acpi_id_for_cpu(int cpu)
 {
 	return	acpi_cpu_get_madt_rintc(cpu)->uid;
