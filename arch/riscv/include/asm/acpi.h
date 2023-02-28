@@ -65,6 +65,8 @@ int acpi_numa_get_nid(unsigned int cpu);
 static inline int acpi_numa_get_nid(unsigned int cpu) { return NUMA_NO_NODE; }
 #endif /* CONFIG_ACPI_NUMA */
 
+int acpi_get_plic_nr_contexts(u8 plic_id);
+int acpi_get_plic_context_id(u8 plic_id, u16 idx);
 struct acpi_madt_rintc *acpi_get_madt_rintc(int cpu);
 struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu);
 int acpi_get_aplic_parent_hartid(u32 aplic_id, int idx, unsigned long *hartid);
