@@ -1264,7 +1264,7 @@ struct acpi_madt_rintc {
 	u32 flags;
 	u64 hartid;
 	u32 uid;
-	u32 aplic_id;
+	u32 ext_intc_id;
 	u64 imsic_addr;
 	u32 imsic_size;
 };
