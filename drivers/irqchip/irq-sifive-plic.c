@@ -67,6 +67,10 @@ struct plic_priv {
 	struct irq_domain *irqdomain;
 	void __iomem *regs;
 	unsigned long plic_quirks;
+#ifdef CONFIG_ACPI
+	u32 nr_irqs;
+	u32 gsi_base;
+#endif
 };
 
 struct plic_handler {
@@ -83,6 +87,13 @@ struct plic_handler {
 static int plic_parent_irq __ro_after_init;
 static bool plic_cpuhp_setup_done __ro_after_init;
 static DEFINE_PER_CPU(struct plic_handler, plic_handlers);
+
+#ifdef CONFIG_ACPI
+#define MAX_PLICS   16
+static struct plic_priv *cached_plic_priv[MAX_PLICS];
+static struct fwnode_handle *cached_plic_handle[MAX_PLICS];
+static u8 nr_plics;
+#endif
 
 static int plic_irq_set_type(struct irq_data *d, unsigned int type);
 
@@ -490,3 +501,187 @@ static int __init plic_edge_init(struct device_node *node,
 
 IRQCHIP_DECLARE(andestech_nceplic100, "andestech,nceplic100", plic_edge_init);
 IRQCHIP_DECLARE(thead_c900_plic, "thead,c900-plic", plic_edge_init);
+
+#ifdef CONFIG_ACPI
+static int find_plic(u32 gsi)
+{
+	int i;
+
+	/* Find the PLIC that manages this GSI. */
+	for (i = 0; i < nr_plics; i++) {
+		struct plic_priv *priv = cached_plic_priv[i];
+
+		if (!priv)
+			return -1;
+
+		if (gsi >= priv->gsi_base && gsi < (priv->gsi_base + priv->nr_irqs))
+			return i;
+	}
+
+	pr_err("ERROR: Unable to locate PLIC for GSI %d\n", gsi);
+	return -1;
+}
+
+static u32 plic_gsi_to_irq(u32 gsi)
+{
+	return acpi_register_gsi(NULL, gsi, ACPI_LEVEL_SENSITIVE, ACPI_ACTIVE_HIGH);
+}
+
+static struct fwnode_handle *plic_get_gsi_domain_id(u32 gsi)
+{
+	int id;
+	struct fwnode_handle *domain_handle = NULL;
+
+	id = find_plic(gsi);
+	if (id >= 0 && cached_plic_handle[id])
+		domain_handle = cached_plic_handle[id];
+
+	return domain_handle;
+}
+
+static int __init
+plic_acpi_init(union acpi_subtable_headers *header, const unsigned long end)
+{
+	struct acpi_madt_plic *plic;
+	struct plic_priv *priv;
+	struct plic_handler *handler;
+	struct fwnode_handle *fn_handle;
+	int error, nr_contexts, nr_handlers = 0;
+
+	plic = (struct acpi_madt_plic *)header;
+
+	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+	if (WARN_ON(!priv)) {
+		error = -ENOMEM;
+		goto out;
+	}
+
+	priv->plic_quirks = 0;
+	priv->gsi_base = plic->gsi_base;
+
+	priv->regs = ioremap(plic->base_addr, plic->size);
+	if (WARN_ON(!priv->regs)) {
+		error = -EIO;
+		goto out;
+	}
+
+	priv->nr_irqs = plic->num_irqs;
+	if (WARN_ON(!priv->nr_irqs)) {
+		error = -EINVAL;
+		goto out;
+	}
+
+	nr_contexts = acpi_get_plic_nr_contexts(plic->id);
+	if (WARN_ON(!nr_contexts)) {
+		error = -EINVAL;
+		goto out;
+	}
+
+	fn_handle = irq_domain_alloc_fwnode(&plic->base_addr);
+	if (WARN_ON(!fn_handle)) {
+		error = -ENOMEM;
+		goto out;
+	}
+
+	priv->irqdomain = irq_domain_create_linear(fn_handle,
+			priv->nr_irqs + 1, &plic_irqdomain_ops, priv);
+	if (WARN_ON(!priv->irqdomain)) {
+		error = -ENOMEM;
+		goto out;
+	}
+
+	for (int i = 0; i < nr_contexts; i++) {
+		struct irq_domain *domain;
+		irq_hw_number_t hwirq;
+		int cpu;
+		int context_id;
+		unsigned long hartid;
+
+		error = acpi_get_ext_intc_parent_hartid(plic->id, i, false, &hartid);
+		if (error) {
+			pr_warn("failed to parse hart ID for context %d\n", i);
+			continue;
+		}
+
+		cpu = riscv_hartid_to_cpuid(hartid);
+		if (cpu < 0) {
+			pr_warn("invalid cpuid for context %d\n", i);
+			continue;
+		}
+
+		/* Find parent domain and register chained handler */
+		domain = irq_find_matching_fwnode(riscv_get_intc_hwnode(),
+				DOMAIN_BUS_ANY);
+		if (!plic_parent_irq && domain) {
+			plic_parent_irq = irq_create_mapping(domain, RV_IRQ_EXT);
+			if (plic_parent_irq)
+				irq_set_chained_handler(plic_parent_irq, plic_handle_irq);
+		}
+
+		handler = per_cpu_ptr(&plic_handlers, cpu);
+		if (handler->present) {
+			pr_warn("handler already present for context %d\n", i);
+			plic_set_threshold(handler, PLIC_DISABLE_THRESHOLD);
+			goto done;
+		}
+
+		context_id = acpi_get_plic_context_id(plic->id, i);
+		if (context_id < 0) {
+			pr_warn("invalid context id %d\n", context_id);
+			error = -EINVAL;
+			goto out;
+		}
+
+		cpumask_set_cpu(cpu, &priv->lmask);
+		handler->present = true;
+		handler->hart_base = priv->regs + CONTEXT_BASE +
+			context_id * CONTEXT_SIZE;
+		raw_spin_lock_init(&handler->enable_lock);
+		handler->enable_base = priv->regs + CONTEXT_ENABLE_BASE +
+			context_id * CONTEXT_ENABLE_SIZE;
+		handler->priv = priv;
+done:
+		for (hwirq = 1; hwirq <= priv->nr_irqs; hwirq++) {
+			plic_toggle(handler, hwirq, 0);
+			writel(1, priv->regs + PRIORITY_BASE +
+				  hwirq * PRIORITY_PER_ID);
+		}
+		nr_handlers++;
+	}
+
+	/*
+	 * We can have multiple PLIC instances so setup cpuhp state only
+	 * when context handler for current/boot CPU is present.
+	 */
+	handler = this_cpu_ptr(&plic_handlers);
+	if (handler->present && !plic_cpuhp_setup_done) {
+		cpuhp_setup_state(CPUHP_AP_IRQ_SIFIVE_PLIC_STARTING,
+				  "irqchip/sifive/plic:starting",
+				  plic_starting_cpu, plic_dying_cpu);
+		plic_cpuhp_setup_done = true;
+	}
+
+	acpi_set_irq_model(ACPI_IRQ_MODEL_PLIC, plic_get_gsi_domain_id);
+	acpi_set_gsi_to_irq_fallback(plic_gsi_to_irq);
+
+	cached_plic_handle[nr_plics] = fn_handle;
+	cached_plic_priv[nr_plics++] = priv;
+
+	pr_info("PLIC: mapped %d interrupts with %d handlers for %d contexts\n",
+			priv->nr_irqs, nr_handlers, nr_contexts);
+	return 0;
+
+out:
+	if (fn_handle)
+		irq_domain_free_fwnode(fn_handle);
+
+	if (priv->regs)
+		iounmap(priv->regs);
+
+	kfree(priv);
+
+	return error;
+}
+
+IRQCHIP_ACPI_DECLARE(riscv_plic, ACPI_MADT_TYPE_PLIC, NULL, 1, plic_acpi_init);
+#endif
