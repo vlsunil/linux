@@ -317,6 +317,23 @@ void acpi_arch_device_init(void)
 	riscv_acpi_aplic_init();
 }
 
+int acpi_get_aplic_parent_hartid(u32 aplic_id, int idx, unsigned long *hartid)
+{
+	int cpu, i = 0;;
+
+	for_each_possible_cpu(cpu) {
+		if (cpu_madt_rintc[cpu].ext_intc_id == aplic_id) {
+			if (i == idx) {
+				*hartid = cpu_madt_rintc[cpu].hart_id;
+				return 0;
+			}
+			i++;
+		}
+	}
+
+	return -1;
+}
+
 #ifdef CONFIG_PCI
 
 /*
