@@ -2669,6 +2669,7 @@ struct acpi_rhct_node_header {
 
 enum acpi_rhct_node_type {
 	ACPI_RHCT_NODE_TYPE_ISA_STRING = 0x0000,
+	ACPI_RHCT_NODE_CMO        = 0x0001,
 	ACPI_RHCT_NODE_TYPE_HART_INFO  = 0xFFFF,
 };
 
@@ -2680,6 +2681,13 @@ enum acpi_rhct_node_type {
 struct acpi_rhct_isa_string {
 	u16                             isa_length;
 	char                            isa[];
+};
+
+/* CMO node structure */
+struct acpi_rhct_cmo_node {
+	u16  cbom_size;
+	u16  cbop_size;
+	u16  cboz_size;
 };
 
 /* Hart Info node structure */
