@@ -656,6 +656,14 @@ void platform_msi_device_domain_free(struct irq_domain *domain, unsigned int vir
 				     unsigned int nvec);
 void *platform_msi_get_host_data(struct irq_domain *domain);
 
+#ifdef CONFIG_ACPI
+struct irq_domain *platform_acpi_msi_domain(struct device *dev);
+void platform_msi_register_fwnode_provider(struct fwnode_handle *(*fn)(struct device *));
+#else
+static inline struct irq_domain *
+platform_acpi_msi_domain(struct device *pdev) { return NULL; }
+#endif
+
 bool msi_device_has_isolated_msi(struct device *dev);
 #else /* CONFIG_GENERIC_MSI_IRQ */
 static inline bool msi_device_has_isolated_msi(struct device *dev)
