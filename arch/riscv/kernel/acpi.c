@@ -17,9 +17,11 @@
 #include <linux/io.h>
 #include <linux/pci.h>
 #include <linux/efi.h>
-#include <linux/msi.h>
 #include <linux/pci-acpi.h>
 #include <linux/pci-ecam.h>
+#include <linux/irqchip/riscv-aplic.h>
+#include <linux/platform_device.h>
+#include <linux/msi.h>
 
 int acpi_noirq = 1;		/* skip ACPI IRQ initialization */
 int acpi_disabled = 1;
@@ -236,6 +238,83 @@ void __init __acpi_unmap_table(void __iomem *map, unsigned long size)
 void *acpi_os_ioremap(acpi_physical_address phys, acpi_size size)
 {
 	return memremap(phys, size, MEMREMAP_WB);
+}
+
+static int __init aplic_parse_madt(union acpi_subtable_headers *header,
+				   const unsigned long end)
+{
+	struct acpi_madt_aplic *aplic_entry = (struct acpi_madt_aplic *)header;
+	struct aplic_plat_data plat_data;
+	struct platform_device *pdev;
+	struct irq_domain *msi_domain;
+	struct fwnode_handle *fwnode;
+	struct resource *res;
+	int ret;
+
+	pdev = platform_device_alloc("riscv-aplic", aplic_entry->id);
+	if (!pdev)
+		return -ENOMEM;
+
+	res = kcalloc(1, sizeof(*res), GFP_KERNEL);
+	if (!res) {
+		ret = -ENOMEM;
+		goto dev_put;
+	}
+
+	res->start = aplic_entry->base_addr;
+	res->end = aplic_entry->base_addr +
+				aplic_entry->size - 1;
+	res->flags = IORESOURCE_MEM;
+	ret = platform_device_add_resources(pdev, res, 1);
+	/*
+	 * Resources are duplicated in platform_device_add_resources,
+	 * free their allocated memory
+	 */
+	kfree(res);
+
+	plat_data.nr_idcs = aplic_entry->num_idcs;
+	plat_data.gsi_base = aplic_entry->gsi_base;
+	plat_data.nr_irqs = aplic_entry->num_irqs;
+	plat_data.aplic_id = aplic_entry->id;
+	ret = platform_device_add_data(pdev, &plat_data, sizeof(plat_data));
+
+	if (ret)
+		goto dev_put;
+
+	fwnode = irq_domain_alloc_named_id_fwnode("riscv-aplic", aplic_entry->id);
+	if (!fwnode)
+		goto dev_put;
+
+	pdev->dev.fwnode = fwnode;
+	msi_domain = platform_acpi_msi_domain(&pdev->dev);
+	if (msi_domain)
+		dev_set_msi_domain(&pdev->dev, msi_domain);
+
+	ret = platform_device_add(pdev);
+	if (ret)
+		goto dev_put;
+	return 0;
+
+dev_put:
+	if (res)
+		kfree(res);
+
+	if (pdev->dev.fwnode)
+		irq_domain_free_fwnode(pdev->dev.fwnode);
+
+	platform_device_put(pdev);
+
+	return ret;
+}
+
+static void riscv_acpi_aplic_init(void)
+{
+	acpi_table_parse_madt(ACPI_MADT_TYPE_APLIC, aplic_parse_madt, 0);
+}
+
+void acpi_arch_device_init(void)
+{
+	riscv_acpi_aplic_init();
 }
 
 #ifdef CONFIG_PCI
