@@ -66,6 +66,7 @@ int acpi_get_riscv_isa(struct acpi_table_header *table,
 
 static inline int acpi_numa_get_nid(unsigned int cpu) { return NUMA_NO_NODE; }
 int acpi_get_aplic_parent_hartid(u32 aplic_id, int idx, unsigned long *hartid);
+int acpi_get_cbom_block_size(struct acpi_table_header *table, unsigned int cpu, u32 *blk_size);
 #else
 static inline int acpi_get_riscv_isa(struct acpi_table_header *table,
 				     unsigned int cpu, const char **isa)
@@ -74,6 +75,14 @@ static inline int acpi_get_riscv_isa(struct acpi_table_header *table,
 }
 
 static inline int acpi_get_aplic_parent_hartid(u32 aplic_id, int idx, unsigned long *hartid)
+{
+	return -EINVAL;
+}
+
+static inline struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu) { return NULL; }
+
+static inline int acpi_get_cbom_block_size(struct acpi_table_header *table,
+					   unsigned int cpu, u32 *blk_size)
 {
 	return -EINVAL;
 }
