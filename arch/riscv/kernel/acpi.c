@@ -325,12 +325,17 @@ void acpi_arch_device_init(void)
 #define PLIC_ID(x) (x >> 24)
 #define CONTEXT_ID(x) (x & 0x0000ffff)
 
-int acpi_get_aplic_parent_hartid(u32 aplic_id, int idx, unsigned long *hartid)
+int acpi_get_ext_intc_parent_hartid(u32 ext_intc_id, int idx, bool aplic, unsigned long *hartid)
 {
 	int cpu, i = 0;;
 
 	for_each_possible_cpu(cpu) {
-		if (cpu_madt_rintc[cpu].ext_intc_id == aplic_id) {
+		u32 id = cpu_madt_rintc[cpu].ext_intc_id;
+
+		if (!aplic)
+			id = PLIC_ID(id);
+
+		if (id == ext_intc_id) {
 			if (i == idx) {
 				*hartid = cpu_madt_rintc[cpu].hart_id;
 				return 0;
