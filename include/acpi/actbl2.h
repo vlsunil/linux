@@ -895,7 +895,8 @@ enum acpi_madt_type {
 	ACPI_MADT_TYPE_RINTC = 24,
 	ACPI_MADT_TYPE_IMSIC = 25,
 	ACPI_MADT_TYPE_APLIC = 26,
-	ACPI_MADT_TYPE_RESERVED = 27,	/* 27 to 0x7F are reserved */
+	ACPI_MADT_TYPE_PLIC = 27,
+	ACPI_MADT_TYPE_RESERVED = 28,	/* 28 to 0x7F are reserved */
 	ACPI_MADT_TYPE_OEM_RESERVED = 0x80	/* 0x80 to 0xFF are reserved for OEM use */
 };
 
@@ -1296,6 +1297,20 @@ struct acpi_madt_aplic {
 	u64 base_addr;
 	u32 size;
 	u16 num_irqs;
+};
+
+/* 27: RISC-V PLIC */
+struct acpi_madt_plic {
+	struct acpi_subtable_header header;
+	u8  version;
+	u8  id;
+	u8  hw_id[8];
+	u16 num_irqs;
+	u16 max_prio;
+	u32 flags;
+	u32 size;
+	u64 base_addr;
+	u32 gsi_base;
 };
 
 /* Values for RISC-V INTC Version field above */
