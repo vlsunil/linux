@@ -317,6 +317,14 @@ void acpi_arch_device_init(void)
 	riscv_acpi_aplic_init();
 }
 
+/*
+ * For PLIC, the ext_intc_id format is as follows:
+ * Bits [31:24] PLIC ID
+ * Bits [15:0] PLIC S-Mode Context ID for this hart
+ */
+#define PLIC_ID(x) (x >> 24)
+#define CONTEXT_ID(x) (x & 0x0000ffff)
+
 int acpi_get_aplic_parent_hartid(u32 aplic_id, int idx, unsigned long *hartid)
 {
 	int cpu, i = 0;;
@@ -329,6 +337,37 @@ int acpi_get_aplic_parent_hartid(u32 aplic_id, int idx, unsigned long *hartid)
 			}
 			i++;
 		}
+	}
+
+	return -1;
+}
+
+int acpi_get_plic_nr_contexts(u8 plic_id)
+{
+	int cpuid, nr_contexts = 0;
+
+	for_each_possible_cpu(cpuid) {
+		u32 id = cpu_madt_rintc[cpuid].ext_intc_id;
+
+		if (cpu_madt_rintc[cpuid].version != 0 && PLIC_ID(id) == plic_id)
+			nr_contexts++;
+	}
+
+	return nr_contexts;
+}
+
+int acpi_get_plic_context_id(u8 plic_id, u16 idx)
+{
+	int cpuid, nr_contexts = -1;
+
+	for_each_possible_cpu(cpuid) {
+		u32 id = cpu_madt_rintc[cpuid].ext_intc_id;
+
+		if (cpu_madt_rintc[cpuid].version != 0 && PLIC_ID(id) == plic_id)
+			nr_contexts++;
+
+		if (nr_contexts == idx)
+			return CONTEXT_ID(id);
 	}
 
 	return -1;
