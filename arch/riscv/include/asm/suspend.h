@@ -33,4 +33,10 @@ int cpu_suspend(unsigned long arg,
 /* Low-level CPU resume entry function */
 int __cpu_resume_enter(unsigned long hartid, unsigned long context);
 
+/* Check whether state is a valid SBI suspend state */
+bool sbi_suspend_state_is_valid(u32 state);
+
+/* Low level SBI suspend function */
+int sbi_suspend(u32 state);
+
 #endif
