@@ -33,6 +33,7 @@ enum sbi_ext_id {
 	SBI_EXT_PMU = 0x504D55,
 	SBI_EXT_DBCN = 0x4442434E,
 	SBI_EXT_NACL = 0x4E41434C,
+	SBI_EXT_CPPC = 0x43505043,
 
 	/* Experimentals extensions must lie within this range */
 	SBI_EXT_EXPERIMENTAL_START = 0x08000000,
@@ -339,6 +340,19 @@ enum sbi_ext_nacl_fid {
 #define SBI_NACL_SRET_SCRATCH_X(__i)		((__riscv_xlen / 8) * (__i))
 #define SBI_NACL_SRET_SCRATCH_X_LAST		31
 #define SBI_NACL_SRET_SCRATCH_HSTATUS		((__riscv_xlen / 8) * 32)
+
+#define SBI_PSM_CPPC_READ		0x0
+#define SBI_PSM_CPPC_READ_HI		0x1
+#define SBI_PSM_CPPC_WRITE		0x2
+
+#define FFH_CPPC_TYPE(r)		(((r) & GENMASK(63, 60)) >> 60)
+#define FFH_CPPC_SBI_REG(r)		((r) & GENMASK(31, 0))
+#define FFH_CPPC_CSR_NUM(r)		((r) & GENMASK(11, 0))
+
+#define FFH_CPPC_SBI			0x0
+#define FFH_CPPC_CSR			0x1
+
+#define FFH_CPPC_SBI_TRANS_LATENCY	0x80000000
 
 #define SBI_SPEC_VERSION_DEFAULT	0x1
 #define SBI_SPEC_VERSION_MAJOR_SHIFT	24

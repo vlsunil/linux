@@ -1,0 +1,94 @@
+#ifdef CONFIG_ACPI_CPPC_LIB
+#include <asm/sbi.h>
+#include <acpi/cppc_acpi.h>
+#include <asm/csr.h>
+
+struct sbi_cppc_data {
+	u64 val;
+	u32 reg;
+	struct sbiret ret;
+};
+
+static void sbi_cppc_read(void *read_data)
+{
+	struct sbi_cppc_data *data = (struct sbi_cppc_data *) read_data;
+
+	data->ret = sbi_ecall(SBI_EXT_CPPC, SBI_PSM_CPPC_READ,
+			      data->reg, 0, 0, 0, 0, 0);
+}
+
+static void sbi_cppc_write(void *write_data)
+{
+	struct sbi_cppc_data *data = (struct sbi_cppc_data *) write_data;
+
+	data->ret = sbi_ecall(SBI_EXT_CPPC, SBI_PSM_CPPC_WRITE,
+			      data->reg, data->val, 0, 0, 0, 0);
+
+}
+
+/*
+ * Refer to drivers/acpi/cppc_acpi.c for the description of the functions
+ * below.
+ */
+bool cpc_ffh_supported(void)
+{
+	return true;
+}
+
+int cpc_read_ffh(int cpu, struct cpc_reg *reg, u64 *val)
+{
+	struct sbi_cppc_data data;
+
+	if (WARN_ON_ONCE(irqs_disabled()))
+		return -EPERM;
+
+	if (FFH_CPPC_TYPE(reg->address) == FFH_CPPC_SBI) {
+		data.reg = FFH_CPPC_SBI_REG(reg->address);
+
+		smp_call_function_single(cpu, sbi_cppc_read, &data, 1);
+
+		*val = data.ret.value;
+
+		return (data.ret.error) ? sbi_err_map_linux_errno(data.ret.error) : 0;
+	}
+
+	/* TODO: CSR access */
+
+	return -EINVAL;
+}
+
+int cpc_write_ffh(int cpu, struct cpc_reg *reg, u64 val)
+{
+	struct sbi_cppc_data data;
+
+	if (WARN_ON_ONCE(irqs_disabled()))
+		return -EPERM;
+
+	if (FFH_CPPC_TYPE(reg->address) == FFH_CPPC_SBI) {
+		data.reg = FFH_CPPC_SBI_REG(reg->address);
+		data.val = val;
+
+		smp_call_function_single(cpu, sbi_cppc_write, &data, 1);
+
+		return (data.ret.error) ? sbi_err_map_linux_errno(data.ret.error) : 0;
+	}
+
+	/* TODO: CSR access */
+
+	return -EINVAL;
+}
+
+int cpc_ffh_transition_latency(int cpu, u32 *val)
+{
+	struct sbi_cppc_data data;
+
+	data.reg = FFH_CPPC_SBI_TRANS_LATENCY;
+
+	smp_call_function_single(cpu, sbi_cppc_read, &data, 1);
+
+	*val = (u32) data.ret.value;
+
+	return (data.ret.error) ? sbi_err_map_linux_errno(data.ret.error) : 0;
+}
+
+#endif /* CONFIG_ACPI_CPPC_LIB */
