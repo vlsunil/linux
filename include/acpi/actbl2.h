@@ -893,7 +893,9 @@ enum acpi_madt_type {
 	ACPI_MADT_TYPE_BIO_PIC = 22,
 	ACPI_MADT_TYPE_LPC_PIC = 23,
 	ACPI_MADT_TYPE_RINTC = 24,
-	ACPI_MADT_TYPE_RESERVED = 25,	/* 25 to 0x7F are reserved */
+	ACPI_MADT_TYPE_IMSIC = 25,
+	ACPI_MADT_TYPE_APLIC = 26,
+	ACPI_MADT_TYPE_RESERVED = 27,	/* 27 to 0x7F are reserved */
 	ACPI_MADT_TYPE_OEM_RESERVED = 0x80	/* 0x80 to 0xFF are reserved for OEM use */
 };
 
@@ -1260,6 +1262,9 @@ struct acpi_madt_rintc {
 	u32 flags;
 	u64 hart_id;
 	u32 uid;		/* ACPI processor UID */
+	u32 ext_intc_id;	/* External INTC Id */
+	u64 imsic_addr;		/* IMSIC base address */
+	u32 imsic_size;		/* IMSIC size */
 };
 
 /* Values for RISC-V INTC Version field above */
@@ -1268,6 +1273,34 @@ enum acpi_madt_rintc_version {
 	ACPI_MADT_RINTC_VERSION_NONE = 0,
 	ACPI_MADT_RINTC_VERSION_V1 = 1,
 	ACPI_MADT_RINTC_VERSION_RESERVED = 2	/* 2 and greater are reserved */
+};
+
+/* 25: RISC-V IMSIC */
+struct acpi_madt_imsic {
+	struct acpi_subtable_header header;
+	u8 version;
+	u8 reserved;
+	u32 flags;
+	u16 num_ids;
+	u16 num_guest_ids;
+	u8 guest_index_bits;
+	u8 hart_index_bits;
+	u8 group_index_bits;
+	u8 group_index_shift;
+};
+
+/* 26: RISC-V APLIC */
+struct acpi_madt_aplic {
+	struct acpi_subtable_header header;
+	u8 version;
+	u8 id;
+	u32 flags;
+	u8 hw_id[8];
+	u16 num_idcs;
+	u16 num_sources;
+	u32 gsi_base;
+	u64 addr;
+	u32 size;
 };
 
 /* 80: OEM data */
