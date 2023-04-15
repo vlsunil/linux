@@ -310,13 +310,28 @@ void acpi_arch_device_init(void)
 	riscv_acpi_aplic_init();
 }
 
-static int acpi_ext_intc_rintc_map(struct acpi_subtable_header *entry, u32 ext_intc_id,
-				   int idx, unsigned long *hartid, u32 *out_ext_intc)
+/*
+ * For PLIC, the ext_intc_id format is as follows:
+ * Bits [31:24] PLIC ID
+ * Bits [15:0] PLIC S-Mode Context ID for this hart
+ */
+#define PLIC_ID(x) (x >> 24)
+#define CONTEXT_ID(x) (x & 0x0000ffff)
+
+static int acpi_ext_intc_rintc_map(struct acpi_subtable_header *entry,
+				   u32 ext_intc_id,
+				   int idx,
+				   bool aplic,
+				   unsigned long *hartid,
+				   u32 *out_ext_intc)
 {
 	struct acpi_madt_rintc *rintc = container_of(entry, struct acpi_madt_rintc, header);
 	static int i;
 	static int64_t ext_intc_cached = -1;
 	u32 id = rintc->ext_intc_id;
+
+	if (!aplic)
+		id = PLIC_ID(id);
 
 	if (ext_intc_cached != id) {
 		i = 0;
@@ -338,8 +353,12 @@ static int acpi_ext_intc_rintc_map(struct acpi_subtable_header *entry, u32 ext_i
 	return -EINVAL;
 }
 
-static int map_madt_rintc_entry(struct acpi_table_madt *madt, u32 ext_intc_id,
-				int idx, unsigned long *hartid, u32 *out_ext_intc)
+static int map_madt_rintc_entry(struct acpi_table_madt *madt,
+				u32 ext_intc_id,
+				int idx,
+				bool aplic,
+				unsigned long *hartid,
+				u32 *out_ext_intc)
 {
 	unsigned long madt_end, entry;
 	int rc;
@@ -357,7 +376,8 @@ static int map_madt_rintc_entry(struct acpi_table_madt *madt, u32 ext_intc_id,
 		struct acpi_subtable_header *header = (struct acpi_subtable_header *)entry;
 
 		if (header->type == ACPI_MADT_TYPE_RINTC) {
-			rc = acpi_ext_intc_rintc_map(header, ext_intc_id, idx, hartid, out_ext_intc);
+			rc = acpi_ext_intc_rintc_map(header, ext_intc_id, idx,
+						   aplic, hartid, out_ext_intc);
 			if (!rc)
 				break;
 		}
@@ -368,7 +388,11 @@ static int map_madt_rintc_entry(struct acpi_table_madt *madt, u32 ext_intc_id,
 	return rc;
 }
 
-int acpi_get_ext_intc_parent_info(u32 ext_intc_id, int idx, unsigned long *hartid, u32 *out_ext_intc)
+int acpi_get_ext_intc_parent_info(u32 ext_intc_id,
+				  int idx,
+				  bool aplic,
+				  unsigned long *hartid,
+				  u32 *out_ext_intc)
 {
 	struct acpi_table_madt *madt = NULL;
 	int rc;
@@ -377,11 +401,85 @@ int acpi_get_ext_intc_parent_info(u32 ext_intc_id, int idx, unsigned long *harti
 	if (!madt)
 		return -1;
 
-	rc = map_madt_rintc_entry(madt, ext_intc_id, idx, hartid, out_ext_intc);
+	rc = map_madt_rintc_entry(madt, ext_intc_id, idx, aplic, hartid, out_ext_intc);
 
 	acpi_put_table((struct acpi_table_header *)madt);
 
 	return rc;
+}
+
+static int match_plic_id(struct acpi_subtable_header *entry, u8 plic_id)
+{
+	struct acpi_madt_rintc *rintc = container_of(entry, struct acpi_madt_rintc, header);
+	u32 id;
+
+	id = rintc->ext_intc_id;
+	if (PLIC_ID(id) == plic_id)
+		return 0;
+
+	return -EINVAL;
+}
+
+static int get_num_rintc_plic(struct acpi_table_madt *madt, u8 plic_id, int *nr_contexts)
+{
+	unsigned long madt_end, entry;
+	int rc, plic_contexts = 0;
+
+	if (!madt)
+		return -1;
+
+	entry = (unsigned long)madt;
+	madt_end = entry + madt->header.length;
+
+	/* Parse all entries looking for a match. */
+
+	entry += sizeof(struct acpi_table_madt);
+	while (entry + sizeof(struct acpi_subtable_header) < madt_end) {
+		struct acpi_subtable_header *header = (struct acpi_subtable_header *)entry;
+
+		if (header->type == ACPI_MADT_TYPE_RINTC) {
+			rc = match_plic_id(header, plic_id);
+			if (!rc)
+				plic_contexts++;
+		}
+
+		entry += header->length;
+	}
+
+	*nr_contexts = plic_contexts;
+
+	return rc;
+}
+
+int acpi_get_plic_nr_contexts(u8 plic_id)
+{
+	struct acpi_table_madt *madt = NULL;
+	int rc, nr_contexts = 0;
+
+	acpi_get_table(ACPI_SIG_MADT, 0, (struct acpi_table_header **)&madt);
+	if (!madt)
+		return 0;
+
+	rc = get_num_rintc_plic(madt, plic_id, &nr_contexts);
+
+	acpi_put_table((struct acpi_table_header *)madt);
+
+	if (rc)
+		return 0;
+
+	return nr_contexts;
+}
+
+int acpi_get_plic_context_id(u8 plic_id, u16 idx)
+{
+	u32 id;
+	int rc;
+
+	rc = acpi_get_ext_intc_parent_info(plic_id, idx, false, NULL, &id);
+	if (rc)
+		return -1;
+	else
+		return CONTEXT_ID(id);
 }
 
 #ifdef CONFIG_PCI
