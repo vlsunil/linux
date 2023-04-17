@@ -310,6 +310,80 @@ void acpi_arch_device_init(void)
 	riscv_acpi_aplic_init();
 }
 
+static int acpi_ext_intc_rintc_map(struct acpi_subtable_header *entry, u32 ext_intc_id,
+				   int idx, unsigned long *hartid, u32 *out_ext_intc)
+{
+	struct acpi_madt_rintc *rintc = container_of(entry, struct acpi_madt_rintc, header);
+	static int i;
+	static int64_t ext_intc_cached = -1;
+	u32 id = rintc->ext_intc_id;
+
+	if (ext_intc_cached != id) {
+		i = 0;
+		ext_intc_cached = id;
+	}
+
+	if ((ext_intc_id == id) && (i == idx)) {
+		if (hartid)
+			*hartid = rintc->hart_id;
+
+		if (out_ext_intc)
+			*out_ext_intc = rintc->ext_intc_id;
+
+		i = 0;
+		return 0;
+	}
+
+	i++;
+	return -EINVAL;
+}
+
+static int map_madt_rintc_entry(struct acpi_table_madt *madt, u32 ext_intc_id,
+				int idx, unsigned long *hartid, u32 *out_ext_intc)
+{
+	unsigned long madt_end, entry;
+	int rc;
+
+	if (!madt)
+		return -1;
+
+	entry = (unsigned long)madt;
+	madt_end = entry + madt->header.length;
+
+	/* Parse all entries looking for a match. */
+
+	entry += sizeof(struct acpi_table_madt);
+	while (entry + sizeof(struct acpi_subtable_header) < madt_end) {
+		struct acpi_subtable_header *header = (struct acpi_subtable_header *)entry;
+
+		if (header->type == ACPI_MADT_TYPE_RINTC) {
+			rc = acpi_ext_intc_rintc_map(header, ext_intc_id, idx, hartid, out_ext_intc);
+			if (!rc)
+				break;
+		}
+
+		entry += header->length;
+	}
+
+	return rc;
+}
+
+int acpi_get_ext_intc_parent_info(u32 ext_intc_id, int idx, unsigned long *hartid, u32 *out_ext_intc)
+{
+	struct acpi_table_madt *madt = NULL;
+	int rc;
+
+	acpi_get_table(ACPI_SIG_MADT, 0, (struct acpi_table_header **)&madt);
+	if (!madt)
+		return -1;
+
+	rc = map_madt_rintc_entry(madt, ext_intc_id, idx, hartid, out_ext_intc);
+
+	acpi_put_table((struct acpi_table_header *)madt);
+
+	return rc;
+}
+
 #ifdef CONFIG_PCI
 
 /*

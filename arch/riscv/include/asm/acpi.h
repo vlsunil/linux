@@ -65,9 +65,17 @@ int acpi_get_riscv_isa(struct acpi_table_header *table,
 		       unsigned int cpu, const char **isa);
 
 static inline int acpi_numa_get_nid(unsigned int cpu) { return NUMA_NO_NODE; }
+int acpi_get_ext_intc_parent_info(u32 ext_intc_id, int idx,
+				  unsigned long *hartid, u32 *out_ext_intc);
 #else
 static inline int acpi_get_riscv_isa(struct acpi_table_header *table,
 				     unsigned int cpu, const char **isa)
+{
+	return -EINVAL;
+}
+
+static inline int acpi_get_ext_intc_parent_info(u32 ext_intc_id, int idx,
+						unsigned long *hartid, u32 *out_ext_intc)
 {
 	return -EINVAL;
 }
