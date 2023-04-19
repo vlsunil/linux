@@ -1120,3 +1120,22 @@ static int __init imsic_dt_init(struct device_node *node,
 	return imsic_init(&node->fwnode);
 }
 IRQCHIP_DECLARE(riscv_imsic, "riscv,imsics", imsic_dt_init);
+
+#ifdef CONFIG_ACPI
+static int __init imsic_acpi_init(union acpi_subtable_headers *header,
+				  const unsigned long end)
+{
+	struct acpi_madt_imsic *imsic = (struct acpi_madt_imsic *)header;
+	struct fwnode_handle *fwnode;
+
+	fwnode =  acpi_imsic_create_swnode(imsic);
+	if (!fwnode) {
+		pr_err("unable to allocate IMSIC FW node\n");
+		return -ENOMEM;
+	}
+
+	return imsic_init(fwnode);
+}
+IRQCHIP_ACPI_DECLARE(riscv_imsic, ACPI_MADT_TYPE_IMSIC,
+		     NULL, 1, imsic_acpi_init);
+#endif
