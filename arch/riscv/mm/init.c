@@ -1066,12 +1066,42 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	pt_ops_set_fixmap();
 }
 
-static void __init setup_vm_final(void)
+static void __init create_linear_mapping_range(phys_addr_t start,
+					       phys_addr_t end)
 {
+	phys_addr_t pa;
 	uintptr_t va, map_size;
-	phys_addr_t pa, start, end;
+
+	for (pa = start; pa < end; pa += map_size) {
+		va = (uintptr_t)__va(pa);
+		map_size = best_map_size(pa, end - pa);
+
+		create_pgd_mapping(swapper_pg_dir, va, pa, map_size,
+				   pgprot_from_va(va));
+	}
+}
+
+static void __init create_linear_mapping_page_table(void)
+{
+	phys_addr_t start, end;
 	u64 i;
 
+	/* Map all memory banks in the linear mapping */
+	for_each_mem_range(i, &start, &end) {
+		if (start >= end)
+			break;
+		if (start <= __pa(PAGE_OFFSET) &&
+		    __pa(PAGE_OFFSET) < end)
+			start = __pa(PAGE_OFFSET);
+		if (end >= __pa(PAGE_OFFSET) + memory_limit)
+			end = __pa(PAGE_OFFSET) + memory_limit;
+
+		create_linear_mapping_range(start, end);
+	}
+}
+
+static void __init setup_vm_final(void)
+{
 	/* Setup swapper PGD for fixmap */
 #if !defined(CONFIG_64BIT)
 	/*
@@ -1087,24 +1117,8 @@ static void __init setup_vm_final(void)
 			   __pa_symbol(fixmap_pgd_next),
 			   PGDIR_SIZE, PAGE_TABLE);
 
-	/* Map all memory banks in the linear mapping */
-	for_each_mem_range(i, &start, &end) {
-		if (start >= end)
-			break;
-		if (start <= __pa(PAGE_OFFSET) &&
-		    __pa(PAGE_OFFSET) < end)
-			start = __pa(PAGE_OFFSET);
-		if (end >= __pa(PAGE_OFFSET) + memory_limit)
-			end = __pa(PAGE_OFFSET) + memory_limit;
-
-		for (pa = start; pa < end; pa += map_size) {
-			va = (uintptr_t)__va(pa);
-			map_size = best_map_size(pa, end - pa);
-
-			create_pgd_mapping(swapper_pg_dir, va, pa, map_size,
-					   pgprot_from_va(va));
-		}
-	}
+	/* Map the linear mapping */
+	create_linear_mapping_page_table();
 
 	/* Map the kernel */
 	if (IS_ENABLED(CONFIG_64BIT))
