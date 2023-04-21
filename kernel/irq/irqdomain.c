@@ -126,6 +126,11 @@ void irq_domain_free_fwnode(struct fwnode_handle *fwnode)
 }
 EXPORT_SYMBOL_GPL(irq_domain_free_fwnode);
 
+bool __weak arch_is_fwnode_irqchip(const struct fwnode_handle *fwnode)
+{
+	return false;
+}
+
 static struct irq_domain *__irq_domain_create(struct fwnode_handle *fwnode,
 					      unsigned int size,
 					      irq_hw_number_t hwirq_max,
@@ -168,7 +173,8 @@ static struct irq_domain *__irq_domain_create(struct fwnode_handle *fwnode,
 			break;
 		}
 	} else if (is_of_node(fwnode) || is_acpi_device_node(fwnode) ||
-		   is_software_node(fwnode)) {
+		   is_software_node(fwnode) ||
+		   arch_is_fwnode_irqchip(fwnode)) {
 		char *name;
 
 		/*

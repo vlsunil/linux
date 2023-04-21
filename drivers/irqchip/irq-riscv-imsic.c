@@ -759,17 +759,48 @@ static int __init imsic_get_parent_hartid(struct fwnode_handle *fwnode,
 	rc = fwnode_property_get_reference_args(fwnode,
 			"interrupts-extended", "#interrupt-cells",
 			0, index, &parent);
-	if (rc)
+	if (rc) {
+pr_err("imsic_get_parent_hartid: interrupts-extended not found\n");
 		return rc;
+	}
 
 	/*
 	 * Skip interrupts other than external interrupts for
 	 * current privilege level.
 	 */
-	if (parent.args[0] != RV_IRQ_EXT)
+	if (parent.args[0] != RV_IRQ_EXT) {
+pr_err("imsic_get_parent_hartid: !RV_IRQ_EXT\n");
 		return -EINVAL;
+	}
 
 	return riscv_fw_parent_hartid(parent.fwnode, hartid);
+}
+
+static int __init acpi_imsic_get_mmio_resource(struct fwnode_handle *fwnode,
+					  u32 index, struct resource *res)
+{
+	int rc;
+	struct fwnode_reference_args parent;
+	u64 base;
+	u32 size;
+
+	rc = fwnode_property_get_reference_args(fwnode,
+			"interrupts-extended", NULL,
+			0, index, &parent);
+	if (rc) {
+pr_err("imsic_get_parent_hartid: interrupts-extended not found\n");
+		return rc;
+	}
+	rc = fwnode_property_read_u64_array(parent.fwnode, "imsic_addr",
+					    &base, 1);
+	rc = fwnode_property_read_u32_array(parent.fwnode, "imsic_size",
+					    &size, 1);
+	if (!rc) {
+		res->start = base;
+		res->end = res->start + size - 1;
+	}
+
+	return 0;
 }
 
 static int __init imsic_get_mmio_resource(struct fwnode_handle *fwnode,
@@ -780,7 +811,7 @@ static int __init imsic_get_mmio_resource(struct fwnode_handle *fwnode,
 	 * for other types of fwnode for ACPI support.
 	 */
 	if (!is_of_node(fwnode))
-		return -EINVAL;
+		return acpi_imsic_get_mmio_resource(fwnode, index, res);
 	return of_address_to_resource(to_of_node(fwnode), index, res);
 }
 
@@ -1128,7 +1159,7 @@ static int __init imsic_acpi_init(union acpi_subtable_headers *header,
 	struct acpi_madt_imsic *imsic = (struct acpi_madt_imsic *)header;
 	struct fwnode_handle *fwnode;
 
-	fwnode =  acpi_imsic_create_swnode(imsic);
+	fwnode =  acpi_imsic_get_fwnode();
 	if (!fwnode) {
 		pr_err("unable to allocate IMSIC FW node\n");
 		return -ENOMEM;

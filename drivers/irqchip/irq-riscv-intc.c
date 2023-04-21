@@ -197,7 +197,7 @@ static int __init riscv_intc_acpi_init(union acpi_subtable_headers *header,
 
 	rintc = (struct acpi_madt_rintc *)header;
 
-	fn = acpi_rintc_create_swnode(rintc);
+	fn = acpi_rintc_get_fwnode(rintc->uid);
 	/*
 	 * The ACPI MADT will have one INTC for each CPU (or HART)
 	 * so riscv_intc_acpi_init() function will be called once

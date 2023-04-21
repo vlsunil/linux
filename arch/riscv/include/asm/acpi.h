@@ -74,6 +74,10 @@ struct fwnode_handle *acpi_rintc_create_swnode(struct acpi_madt_rintc *rintc);
 struct fwnode_handle *acpi_imsic_create_swnode(struct acpi_madt_imsic *imsic);
 struct fwnode_handle *acpi_aplic_create_swnode(struct acpi_madt_aplic *aplic);
 void riscv_acpi_aplic_init(void);
+void acpi_init_fwnodes(void);
+struct fwnode_handle *acpi_rintc_get_fwnode(u32 uid);
+struct fwnode_handle *acpi_imsic_get_fwnode(void);
+struct fwnode_handle *acpi_aplic_get_fwnode(u32 aplic_id);
 #else
 static inline int acpi_get_riscv_isa(struct acpi_table_header *table,
 				     unsigned int cpu, const char **isa)

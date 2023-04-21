@@ -1294,14 +1294,14 @@ struct acpi_madt_imsic {
 struct acpi_madt_aplic {
 	struct acpi_subtable_header header;
 	u8 version;
-	u8 reserved;
-	u32 id;
+	u8 id;
+	u32 flags;
 	u8 hw_id[8];
-	u32 num_idcs;
+	u16 num_idcs;
+	u16 num_sources;
 	u32 gsi_base;
 	u64 addr;
 	u32 size;
-	u16 num_sources;
 };
 
 /* 27: RISC-V PLIC */

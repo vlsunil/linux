@@ -75,12 +75,20 @@ int riscv_of_parent_hartid(struct device_node *node, unsigned long *hartid)
 /* Find hart ID of the CPU fwnode under which given fwnode falls. */
 int riscv_fw_parent_hartid(struct fwnode_handle *node, unsigned long *hartid)
 {
+	u64 id;
+	int rc;
 	/*
 	 * Currently, this function only supports DT but it can be
 	 * extended to support ACPI as well.
 	 */
-	if (!is_of_node(node))
-		return -EINVAL;
+	if (!is_of_node(node)) {
+		rc = fwnode_property_read_u64_array(node, "hartid", &id, 1);
+		if (!rc) {
+pr_info("riscv_fw_parent_hartid: Found matching hartid: %lld\n", id);
+			*hartid = id;
+		}
+		return rc;
+	}
 	return riscv_of_parent_hartid(to_of_node(node), hartid);
 }
 

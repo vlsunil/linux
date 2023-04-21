@@ -683,6 +683,7 @@ static int aplic_probe(struct platform_device *pdev)
 			priv->nr_idcs++;
 	}
 
+pr_info("aplic_init: nr_irqs = %d, nr_idcs=%d\n", priv->nr_irqs, priv->nr_idcs);
 	/* Setup IDCs or MSIs based on number of IDCs */
 	if (priv->nr_idcs)
 		rc = aplic_setup_idc(priv);

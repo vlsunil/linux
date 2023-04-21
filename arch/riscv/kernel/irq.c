@@ -36,6 +36,7 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 
 void __init init_IRQ(void)
 {
+	acpi_init_fwnodes();
 	irqchip_init();
 	if (!handle_arch_irq)
 		panic("No interrupt controller found.");
