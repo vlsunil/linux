@@ -36,7 +36,7 @@ LIST_HEAD(aplic_list);
  * @args: Integer arguments
  */
 struct riscv_acpi_irqchip_fwid_ref_args {
-        const struct riscv_acpi_irqchip_fwid *node;
+        struct riscv_acpi_irqchip_fwid *node;
         unsigned int nargs;
         u64 args[NR_FWNODE_REFERENCE_ARGS];
 };
@@ -168,17 +168,14 @@ riscv_acpi_irqchip_fwnode_get_reference_args(const struct fwnode_handle *fwnode,
 	int error;
 	int i;
 
-pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: ENTER for index=%u\n", index);
 	prop = property_entry_get(fwid->properties, propname);
 	if (!prop) {
-pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: no property found\n");
 		return -ENOENT;
 	}
 
 	if (prop->type != DEV_PROP_REF)
 		return -EINVAL;
 
-pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: after DEV_PROP_REF\n");
 	/*
 	 * We expect that references are never stored inline, even
 	 * single ones, as they are too big.
@@ -186,12 +183,9 @@ pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: after DEV_PROP_REF\n");
 	if (prop->is_inline)
 		return -EINVAL;
 
-pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: after inline\n");
-pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: prop->length = %d\n", prop->length);
 	if (index * sizeof(*ref) >= prop->length)
 		return -ENOENT;
 
-pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: after length\n");
 	ref_array = prop->pointer;
 	ref = &ref_array[index];
 
@@ -199,13 +193,11 @@ pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: after length\n");
 	if (!refnode)
 		return -ENOENT;
 
-pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: 1\n");
 	if (nargs_prop) {
 		error = property_entry_read_int_array(ref->node->properties,
 						      nargs_prop, sizeof(u32),
 						      &nargs_prop_val, 1);
 		if (error) {
-pr_info("riscv_acpi_irqchip_fwnode_get_reference_args: 2\n");
 			return error;
 		}
 
@@ -293,7 +285,7 @@ static struct fwnode_handle *imsic_acpi_fwnode;
 #define APLIC_PLIC_ID(x) (x >> 24)
 #define IDC_CONTEXT_ID(x) (x & 0x0000ffff)
 
-struct fwnode_handle *acpi_rintc_create_swnode(struct acpi_madt_rintc *rintc)
+static int acpi_rintc_create_swnode(struct acpi_madt_rintc *rintc)
 {
 	struct property_entry props[7] = {};
 	struct fwnode_handle *fwnode;
@@ -311,16 +303,14 @@ struct fwnode_handle *acpi_rintc_create_swnode(struct acpi_madt_rintc *rintc)
 	if (fwnode) {
 		rintc_element = kzalloc(sizeof(*rintc_element), GFP_KERNEL);
 		if (!rintc_element) {
-pr_info("acpi_rintc_create_swnode: Could not allocate memory for rintc_element\n");
-			return NULL;
+			return -1;
 		}
 
-pr_info("acpi_rintc_create_swnode: Added rintc\n");
 		rintc_element->fwnode = fwnode;
 		list_add_tail(&rintc_element->list, &rintc_list);
 	}
 
-	return fwnode ? fwnode : NULL;
+	return fwnode ? 0 : -1;
 }
 
 struct fwnode_handle *acpi_rintc_get_fwnode(u32 uid)
@@ -331,16 +321,12 @@ struct fwnode_handle *acpi_rintc_get_fwnode(u32 uid)
 	u32 acpi_id;
 	int rc;
 
-pr_info("acpi_rintc_get_fwnode: ENTER for uid = %d\n", uid);
 	list_for_each_safe(i, tmp, &rintc_list) {
 		rintc_element = list_entry(i, struct riscv_swnode_list, list);
 		fwnode = rintc_element->fwnode;
 		rc = fwnode_property_read_u32_array(fwnode, "acpi_uid", &acpi_id, 1);
-pr_info("acpi_rintc_get_fwnode: IN:uid = %d, rc = %d, acpi_id = %d\n", uid, rc, acpi_id);
-		if ((!rc) && (acpi_id == uid)) {
-			pr_info("acpi_rintc_get_fwnode: Found matching rintc for uid = %d\n", uid);
+		if (!rc && acpi_id == uid)
 			return fwnode;
-		}
 	}
 
 	return NULL;
@@ -377,31 +363,27 @@ static struct fwnode_handle *acpi_ext_intc_get_matching_rintc_fwnode(u8 in_plic_
 	u16 idc_context_id;
 	int rc;
 
-pr_info("acpi_ext_intc_get_matching_rintc_fwnode: aplic_id(IN): %d, idc_idx=%d\n", in_plic_aplic_idx, in_idc_context_idx);
 	list_for_each_safe(i, tmp, &rintc_list) {
 		rintc_element = list_entry(i, struct riscv_swnode_list, list);
 		fwnode = rintc_element->fwnode;
 		rc = fwnode_property_read_u32_array(fwnode, "ext_intc_id", &id, 1);
 		if (rc)
 			continue;
-		pr_info("acpi_ext_intc_get_matching_rintc_fwnode: ext_intc_id = %d\n", id);
 		aplic_id = APLIC_PLIC_ID(id);
 		idc_context_id = IDC_CONTEXT_ID(id);
 
-		if ((aplic_id == in_plic_aplic_idx) && (idc_context_id == in_idc_context_idx)) {
-			pr_info("acpi_ext_intc_get_matching_rintc_fwnode: Found match\n");
+		if ((aplic_id == in_plic_aplic_idx) && (idc_context_id == in_idc_context_idx))
 			return fwnode;
-		}
 	}
 
 	return NULL;
 }
 
-struct fwnode_handle *acpi_imsic_create_swnode(struct acpi_madt_imsic *imsic)
+static int acpi_imsic_create_swnode(struct acpi_madt_imsic *imsic)
 {
 	struct property_entry props[7] = {};
 	struct riscv_acpi_irqchip_fwid_ref_args *refs;
-	struct fwnode_handle *fwnode, *parent_fwnode;
+	struct fwnode_handle *parent_fwnode;
 	unsigned int nr_rintc, i;
 
 	props[0] = PROPERTY_ENTRY_U32("riscv,guest-index-bits", imsic->guest_index_bits);
@@ -412,7 +394,6 @@ struct fwnode_handle *acpi_imsic_create_swnode(struct acpi_madt_imsic *imsic)
 	props[5] = PROPERTY_ENTRY_U32("riscv,num-guest-ids", imsic->num_guest_ids);
 
 	nr_rintc = list_count_nodes(&rintc_list);
-pr_info("acpi_imsic_create_swnode: nr_rintc = %d\n", nr_rintc);
 	refs = kzalloc(sizeof(*refs) * nr_rintc, GFP_KERNEL);
 	for (i = 0; i < nr_rintc; i++) {
 		parent_fwnode = acpi_imsic_get_matching_rintc_fwnode(i);
@@ -420,87 +401,23 @@ pr_info("acpi_imsic_create_swnode: nr_rintc = %d\n", nr_rintc);
 	}
 	props[6] = PROPERTY_ENTRY_REF_ARRAY_LEN("interrupts-extended", refs, nr_rintc);
 
-	fwnode = riscv_acpi_irqchip_create_fwnode(props, 0, "RISC-V IMSIC");
+	imsic_acpi_fwnode = riscv_acpi_irqchip_create_fwnode(props, 0, "RISC-V IMSIC");
 
-	imsic_acpi_fwnode = fwnode;
-
-	return fwnode ? fwnode : NULL;
+	return imsic_acpi_fwnode ? 0 : -1;
 }
 
-struct fwnode_handle *acpi_imsic_get_fwnode()
+struct fwnode_handle *acpi_imsic_get_fwnode(struct device *dev)
 {
 	return imsic_acpi_fwnode;
 }
 
-struct fwnode_handle *acpi_aplic_create_swnode(struct acpi_madt_aplic *aplic)
+static int __init aplic_create_platform_device(union acpi_subtable_headers *header,
+					       const unsigned long end)
 {
-	struct property_entry props[5];
-	struct fwnode_handle *fwnode, *parent_fwnode;
-	struct riscv_swnode_list *aplic_element;
-	struct riscv_acpi_irqchip_fwid_ref_args *refs;
-	unsigned int i;
-
-	props[0] = PROPERTY_ENTRY_U32("riscv,gsi-base", aplic->gsi_base);
-	props[1] = PROPERTY_ENTRY_U32("riscv,num-sources", aplic->num_sources);
-	props[2] = PROPERTY_ENTRY_U32("riscv,num-idcs", aplic->num_idcs);
-	props[3] = PROPERTY_ENTRY_U32("riscv,aplic-id", aplic->id);
-	if (aplic->num_idcs) {
-		refs = kzalloc(sizeof(*refs) * aplic->num_idcs, GFP_KERNEL);
-		for (i = 0; i < aplic->num_idcs; i++) {
-			parent_fwnode = acpi_ext_intc_get_matching_rintc_fwnode(aplic->id, i);
-			refs[i] = RISCV_ACPI_FWID_REFERENCE(to_riscv_acpi_irqchip_node(parent_fwnode), RV_IRQ_EXT);
-		}
-		props[4] = PROPERTY_ENTRY_REF_ARRAY_LEN("interrupts-extended", refs, aplic->num_idcs);
-	} else {
-		props[4] = PROPERTY_ENTRY_BOOL("msi-parent");
-
-	}
-
-	fwnode = riscv_acpi_irqchip_create_fwnode(props, aplic->id, "RISC-V APLIC");
-
-	if (fwnode) {
-		aplic_element = kzalloc(sizeof(*aplic_element), GFP_KERNEL);
-		if (!aplic_element) {
-pr_info("acpi_rintc_create_swnode: Could not allocate memory for rintc_element\n");
-			return NULL;
-		}
-
-		aplic_element->fwnode = fwnode;
-		list_add_tail(&aplic_element->list, &aplic_list);
-	}
-
-	return fwnode ? fwnode : NULL;
-}
-
-struct fwnode_handle *acpi_aplic_get_fwnode(u32 aplic_id)
-{
-	struct riscv_swnode_list *aplic_element;
-	struct list_head *i, *tmp;
+	struct acpi_madt_aplic *aplic_entry = (struct acpi_madt_aplic *) header;
 	struct fwnode_handle *fwnode;
-	int rc;
-	u32 id;
-
-	list_for_each_safe(i, tmp, &aplic_list) {
-		aplic_element = list_entry(i, struct riscv_swnode_list, list);
-		fwnode = aplic_element->fwnode;
-		rc = fwnode_property_read_u32_array(fwnode, "riscv,aplic-id", &id, 1);
-		if ((!rc) && (aplic_id == id)) {
-			pr_info("acpi_aplic_get_fwnode: Found matching aplic for aplic_id = %d\n", id);
-			return fwnode;
-		}
-	}
-
-	return NULL;
-}
-
-int __init aplic_parse_madt(union acpi_subtable_headers *header,
-				   const unsigned long end)
-{
-	struct acpi_madt_aplic *aplic_entry = (struct acpi_madt_aplic *)header;
-	struct aplic_plat_data plat_data;
 	struct platform_device *pdev;
 	struct irq_domain *msi_domain;
-	struct fwnode_handle *fwnode;
 	struct resource *res;
 	int ret;
 
@@ -529,15 +446,6 @@ int __init aplic_parse_madt(union acpi_subtable_headers *header,
 	if (!fwnode)
 		goto dev_put;
 
-	plat_data.nr_idcs = aplic_entry->num_idcs;
-	plat_data.gsi_base = aplic_entry->gsi_base;
-	plat_data.nr_irqs = aplic_entry->num_sources;
-	plat_data.aplic_id = aplic_entry->id;
-	ret = platform_device_add_data(pdev, &plat_data, sizeof(plat_data));
-
-	if (ret)
-		goto dev_put;
-
 	pdev->dev.fwnode = fwnode;
 	msi_domain = platform_acpi_msi_domain(&pdev->dev);
 	if (msi_domain)
@@ -560,54 +468,108 @@ dev_put:
 	return ret;
 }
 
-void riscv_acpi_aplic_init(void)
+static int acpi_aplic_create_swnode(struct acpi_madt_aplic *aplic)
 {
-	acpi_table_parse_madt(ACPI_MADT_TYPE_APLIC, aplic_parse_madt, 0);
+	struct property_entry props[5];
+	struct fwnode_handle *fwnode, *parent_fwnode;
+	struct riscv_swnode_list *aplic_element;
+	struct riscv_acpi_irqchip_fwid_ref_args *refs;
+	unsigned int i;
+	int rc = -1;
+
+	props[0] = PROPERTY_ENTRY_U32("riscv,gsi-base", aplic->gsi_base);
+	props[1] = PROPERTY_ENTRY_U32("riscv,num-sources", aplic->num_sources);
+	props[2] = PROPERTY_ENTRY_U32("riscv,num-idcs", aplic->num_idcs);
+	props[3] = PROPERTY_ENTRY_U32("riscv,aplic-id", aplic->id);
+	if (aplic->num_idcs) {
+		refs = kzalloc(sizeof(*refs) * aplic->num_idcs, GFP_KERNEL);
+		for (i = 0; i < aplic->num_idcs; i++) {
+			parent_fwnode = acpi_ext_intc_get_matching_rintc_fwnode(aplic->id, i);
+			refs[i] = RISCV_ACPI_FWID_REFERENCE(to_riscv_acpi_irqchip_node(parent_fwnode), RV_IRQ_EXT);
+		}
+		props[4] = PROPERTY_ENTRY_REF_ARRAY_LEN("interrupts-extended", refs, aplic->num_idcs);
+	} else {
+		props[4] = PROPERTY_ENTRY_BOOL("msi-parent");
+
+	}
+
+	fwnode = riscv_acpi_irqchip_create_fwnode(props, aplic->id, "RISC-V APLIC");
+
+	if (fwnode) {
+		aplic_element = kzalloc(sizeof(*aplic_element), GFP_KERNEL);
+		if (!aplic_element) {
+			return -1;
+		}
+
+		aplic_element->fwnode = fwnode;
+		list_add_tail(&aplic_element->list, &aplic_list);
+	}
+
+	return (fwnode && !rc) ? 0 : -1;
+}
+
+struct fwnode_handle *acpi_aplic_get_fwnode(u32 aplic_id)
+{
+	struct riscv_swnode_list *aplic_element;
+	struct list_head *i, *tmp;
+	struct fwnode_handle *fwnode;
+	int rc;
+	u32 id;
+
+	list_for_each_safe(i, tmp, &aplic_list) {
+		aplic_element = list_entry(i, struct riscv_swnode_list, list);
+		fwnode = aplic_element->fwnode;
+		rc = fwnode_property_read_u32_array(fwnode, "riscv,aplic-id", &id, 1);
+		if ((!rc) && (aplic_id == id))
+			return fwnode;
+	}
+
+	return NULL;
+}
+
+struct fwnode_handle *aplic_get_gsi_domain_id(u32 gsi)
+{
+	struct riscv_swnode_list *aplic_element;
+	struct list_head *i, *tmp;
+	struct fwnode_handle *fwnode;
+	int rc;
+	u32 gsi_base;
+	u32 nr_irqs;
+
+	list_for_each_safe(i, tmp, &aplic_list) {
+		aplic_element = list_entry(i, struct riscv_swnode_list, list);
+		fwnode = aplic_element->fwnode;
+		rc = fwnode_property_read_u32_array(fwnode, "riscv,gsi-base", &gsi_base, 1);
+		rc = fwnode_property_read_u32_array(fwnode, "riscv,num-sources", &nr_irqs, 1);
+		if ((!rc) && (gsi >= gsi_base && gsi < gsi_base + nr_irqs))
+			return fwnode;
+	}
+
+	return NULL;
 }
 
 static int __init rintc_parse_madt_swnode(union acpi_subtable_headers *header,
-				   const unsigned long end)
+					  const unsigned long end)
 {
-	struct fwnode_handle *fwnode;
 	struct acpi_madt_rintc *rintc = (struct acpi_madt_rintc *)header;
 
-	fwnode = acpi_rintc_create_swnode(rintc);
-	if (fwnode)
-		pr_info("created RINTC fwnode successfully\n");
-	else
-		pr_info("created RINTC fwnode not successfully\n");
-
-	return 0;
+	return acpi_rintc_create_swnode(rintc);
 }
 
 static int __init imsic_parse_madt_swnode(union acpi_subtable_headers *header,
-				   const unsigned long end)
+					  const unsigned long end)
 {
-	struct fwnode_handle *fwnode;
 	struct acpi_madt_imsic *imsic = (struct acpi_madt_imsic *)header;
 
-	fwnode = acpi_imsic_create_swnode(imsic);
-	if (fwnode)
-		pr_info("created IMSIC fwnode successfully\n");
-	else
-		pr_info("created IMSIC fwnode not successfully\n");
-
-	return 0;
+	return acpi_imsic_create_swnode(imsic);
 }
 
 static int __init aplic_parse_madt_swnode(union acpi_subtable_headers *header,
-				   const unsigned long end)
+					  const unsigned long end)
 {
-	struct fwnode_handle *fwnode;
 	struct acpi_madt_aplic *aplic = (struct acpi_madt_aplic *)header;
 
-	fwnode = acpi_aplic_create_swnode(aplic);
-	if (fwnode)
-		pr_info("created APLIC fwnode successfully\n");
-	else
-		pr_info("created APLIC fwnode not successfully\n");
-
-	return 0;
+	return acpi_aplic_create_swnode(aplic);
 }
 
 void acpi_init_fwnodes()
@@ -621,3 +583,9 @@ bool arch_is_fwnode_irqchip(const struct fwnode_handle *fwnode)
 {
 	return !IS_ERR_OR_NULL(fwnode) && fwnode->ops == &riscv_acpi_irqchip_fwnode_ops;
 }
+
+int riscv_acpi_aplic_init()
+{
+	return acpi_table_parse_madt(ACPI_MADT_TYPE_APLIC, aplic_create_platform_device, 0);
+}
+

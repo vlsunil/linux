@@ -760,7 +760,6 @@ static int __init imsic_get_parent_hartid(struct fwnode_handle *fwnode,
 			"interrupts-extended", "#interrupt-cells",
 			0, index, &parent);
 	if (rc) {
-pr_err("imsic_get_parent_hartid: interrupts-extended not found\n");
 		return rc;
 	}
 
@@ -769,7 +768,6 @@ pr_err("imsic_get_parent_hartid: interrupts-extended not found\n");
 	 * current privilege level.
 	 */
 	if (parent.args[0] != RV_IRQ_EXT) {
-pr_err("imsic_get_parent_hartid: !RV_IRQ_EXT\n");
 		return -EINVAL;
 	}
 
@@ -1156,16 +1154,26 @@ IRQCHIP_DECLARE(riscv_imsic, "riscv,imsics", imsic_dt_init);
 static int __init imsic_acpi_init(union acpi_subtable_headers *header,
 				  const unsigned long end)
 {
-	struct acpi_madt_imsic *imsic = (struct acpi_madt_imsic *)header;
 	struct fwnode_handle *fwnode;
+	int rc;
 
-	fwnode =  acpi_imsic_get_fwnode();
+	/*
+	 * There should be only one IMSIC node.
+	 */
+	fwnode =  acpi_imsic_get_fwnode(NULL);
 	if (!fwnode) {
 		pr_err("unable to allocate IMSIC FW node\n");
 		return -ENOMEM;
 	}
 
-	return imsic_init(fwnode);
+	rc = imsic_init(fwnode);
+	if (!rc) {
+		platform_msi_register_fwnode_provider(&acpi_imsic_get_fwnode);
+
+		pci_msi_register_fwnode_provider(&acpi_imsic_get_fwnode);
+	}
+
+	return rc;
 }
 IRQCHIP_ACPI_DECLARE(riscv_imsic, ACPI_MADT_TYPE_IMSIC,
 		     NULL, 1, imsic_acpi_init);

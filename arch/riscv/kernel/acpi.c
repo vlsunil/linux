@@ -166,7 +166,6 @@ static int acpi_parse_madt_rintc(union acpi_subtable_headers *header, const unsi
 	if (!(rintc->flags & ACPI_MADT_ENABLED))
 		return 0;
 
-pr_info("acpi_parse_madt_rintc: hartid = 0x%x\n", rintc->hart_id);
 	cpuid = riscv_hartid_to_cpuid(rintc->hart_id);
 	/*
 	 * When CONFIG_SMP is disabled, mapping won't be created for
@@ -202,7 +201,6 @@ struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu)
 
 u32 get_acpi_id_for_cpu(int cpu)
 {
-pr_info("get_acpi_id_for_cpu: ENTER\n");
 	struct acpi_madt_rintc *rintc = acpi_cpu_get_madt_rintc(cpu);
 
 	BUG_ON(!rintc);
@@ -233,11 +231,6 @@ void __init __acpi_unmap_table(void __iomem *map, unsigned long size)
 void *acpi_os_ioremap(acpi_physical_address phys, acpi_size size)
 {
 	return memremap(phys, size, MEMREMAP_WB);
-}
-
-void acpi_arch_device_init(void)
-{
-	riscv_acpi_aplic_init();
 }
 
 /*
@@ -410,6 +403,11 @@ int acpi_get_plic_context_id(u8 plic_id, u16 idx)
 		return -1;
 	else
 		return CONTEXT_ID(id);
+}
+
+void acpi_arch_device_init(void)
+{
+	riscv_acpi_aplic_init();
 }
 
 #ifdef CONFIG_PCI

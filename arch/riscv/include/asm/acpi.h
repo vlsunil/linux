@@ -70,14 +70,12 @@ int acpi_get_ext_intc_parent_info(u32 ext_intc_id, int idx, bool aplic,
 int acpi_get_cbom_block_size(struct acpi_table_header *table, unsigned int cpu, u32 *blk_size);
 int acpi_get_plic_nr_contexts(u8 plic_id);
 int acpi_get_plic_context_id(u8 plic_id, u16 idx);
-struct fwnode_handle *acpi_rintc_create_swnode(struct acpi_madt_rintc *rintc);
-struct fwnode_handle *acpi_imsic_create_swnode(struct acpi_madt_imsic *imsic);
-struct fwnode_handle *acpi_aplic_create_swnode(struct acpi_madt_aplic *aplic);
-void riscv_acpi_aplic_init(void);
 void acpi_init_fwnodes(void);
 struct fwnode_handle *acpi_rintc_get_fwnode(u32 uid);
-struct fwnode_handle *acpi_imsic_get_fwnode(void);
+struct fwnode_handle *acpi_imsic_get_fwnode(struct device *dev);
 struct fwnode_handle *acpi_aplic_get_fwnode(u32 aplic_id);
+struct fwnode_handle *aplic_get_gsi_domain_id(u32 gsi);
+int riscv_acpi_aplic_init(void);
 #else
 static inline int acpi_get_riscv_isa(struct acpi_table_header *table,
 				     unsigned int cpu, const char **isa)

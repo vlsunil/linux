@@ -84,7 +84,6 @@ int riscv_fw_parent_hartid(struct fwnode_handle *node, unsigned long *hartid)
 	if (!is_of_node(node)) {
 		rc = fwnode_property_read_u64_array(node, "hartid", &id, 1);
 		if (!rc) {
-pr_info("riscv_fw_parent_hartid: Found matching hartid: %lld\n", id);
 			*hartid = id;
 		}
 		return rc;
