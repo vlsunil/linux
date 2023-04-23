@@ -67,6 +67,7 @@ int acpi_get_riscv_isa(struct acpi_table_header *table,
 static inline int acpi_numa_get_nid(unsigned int cpu) { return NUMA_NO_NODE; }
 void acpi_init_irqchip_fwnodes(void);
 struct fwnode_handle *acpi_rintc_get_fwnode(u32 uid);
+struct fwnode_handle *acpi_imsic_get_fwnode(struct device *dev);
 #else
 static inline struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu)
 {
