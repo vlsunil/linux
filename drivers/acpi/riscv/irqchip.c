@@ -8,6 +8,8 @@
 #include <linux/acpi.h>
 #include <linux/fwnode.h>
 #include <linux/list.h>
+#include <linux/msi.h>
+#include <linux/platform_device.h>
 #include <linux/property.h>
 
 struct riscv_irqchip_list {
@@ -263,3 +265,79 @@ void acpi_init_irqchip_fwnodes(void)
 	acpi_table_parse_madt(ACPI_MADT_TYPE_PLIC, plic_parse_madt_fwnode, 0);
 }
 
+static int __init aplic_create_platform_device(struct fwnode_handle *fwnode)
+{
+	struct platform_device *pdev;
+	struct irq_domain *msi_domain;
+	struct resource *res;
+	u64 aplic_base;
+	u32 aplic_size, aplic_id;
+	int ret;
+
+	if (!fwnode)
+		return -ENODEV;
+
+	ret = fwnode_property_read_u64_array(fwnode, "riscv,aplic-base", &aplic_base, 1);
+	if (ret)
+		return -ENODEV;
+
+	ret = fwnode_property_read_u32_array(fwnode, "riscv,aplic-size", &aplic_size, 1);
+	if (ret)
+		return -ENODEV;
+
+	ret = fwnode_property_read_u32_array(fwnode, "riscv,aplic-id", &aplic_id, 1);
+	if (ret)
+		return -ENODEV;
+
+	pdev = platform_device_alloc("riscv-aplic", aplic_id);
+	if (!pdev)
+		return -ENOMEM;
+
+	res = kcalloc(1, sizeof(*res), GFP_KERNEL);
+	if (!res) {
+		ret = -ENOMEM;
+		goto dev_put;
+	}
+
+	res->start = aplic_base;
+	res->end = res->start + aplic_size - 1;
+	res->flags = IORESOURCE_MEM;
+	ret = platform_device_add_resources(pdev, res, 1);
+	/*
+	 * Resources are duplicated in platform_device_add_resources,
+	 * free their allocated memory
+	 */
+	kfree(res);
+
+	pdev->dev.fwnode = fwnode;
+	msi_domain = platform_acpi_msi_domain(&pdev->dev);
+	if (msi_domain)
+		dev_set_msi_domain(&pdev->dev, msi_domain);
+
+	ret = platform_device_add(pdev);
+	if (ret)
+		goto dev_put;
+
+	return 0;
+
+dev_put:
+	if (res)
+		kfree(res);
+
+	platform_device_put(pdev);
+
+	return ret;
+}
+
+void riscv_acpi_aplic_platform_init(void)
+{
+	struct riscv_irqchip_list *aplic_element;
+	struct list_head *i, *tmp;
+	struct fwnode_handle *fwnode;
+
+	list_for_each_safe(i, tmp, &aplic_list) {
+		aplic_element = list_entry(i, struct riscv_irqchip_list, list);
+		fwnode = aplic_element->fwnode;
+		aplic_create_platform_device(fwnode);
+	}
+}
