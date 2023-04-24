@@ -341,3 +341,24 @@ void riscv_acpi_aplic_platform_init(void)
 		aplic_create_platform_device(fwnode);
 	}
 }
+
+struct fwnode_handle *aplic_get_gsi_domain_id(u32 gsi)
+{
+	struct riscv_irqchip_list *aplic_element;
+	struct list_head *i, *tmp;
+	struct fwnode_handle *fwnode;
+	int rc;
+	u32 gsi_base;
+	u32 nr_irqs;
+
+	list_for_each_safe(i, tmp, &aplic_list) {
+		aplic_element = list_entry(i, struct riscv_irqchip_list, list);
+		fwnode = aplic_element->fwnode;
+		rc = fwnode_property_read_u32_array(fwnode, "riscv,gsi-base", &gsi_base, 1);
+		rc = fwnode_property_read_u32_array(fwnode, "riscv,num-sources", &nr_irqs, 1);
+		if ((!rc) && (gsi >= gsi_base && gsi < gsi_base + nr_irqs))
+			return fwnode;
+	}
+
+	return NULL;
+}

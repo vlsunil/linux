@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2021 Western Digital Corporation or its affiliates.
- * Copyright (C) 2022 Ventana Micro Systems Inc.
+ * Copyright (C) 2022-2023 Ventana Micro Systems Inc.
  */
 
+#include <linux/acpi.h>
 #include <linux/bitops.h>
 #include <linux/cpu.h>
 #include <linux/interrupt.h>
@@ -621,6 +622,13 @@ static int aplic_setup_idc(struct aplic_priv *priv)
 	return (setup_count) ? 0 : -ENODEV;
 }
 
+#ifdef CONFIG_ACPI
+static u32 aplic_gsi_to_irq(u32 gsi)
+{
+	return acpi_register_gsi(NULL, gsi, ACPI_LEVEL_SENSITIVE, ACPI_ACTIVE_HIGH);
+}
+#endif
+
 static int aplic_probe(struct platform_device *pdev)
 {
 	struct fwnode_handle *fwnode = pdev->dev.fwnode;
@@ -715,6 +723,13 @@ static int aplic_probe(struct platform_device *pdev)
 		pr_err("%pfwP: failed to add irq domain\n", priv->fwnode);
 		return -ENOMEM;
 	}
+
+#ifdef CONFIG_ACPI
+	if (!acpi_disabled) {
+		acpi_set_irq_model(ACPI_IRQ_MODEL_APLIC, aplic_get_gsi_domain_id);
+		acpi_set_gsi_to_irq_fallback(aplic_gsi_to_irq);
+	}
+#endif
 
 	/* Advertise the interrupt controller */
 	if (priv->nr_idcs) {

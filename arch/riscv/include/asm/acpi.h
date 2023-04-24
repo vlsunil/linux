@@ -69,6 +69,7 @@ void acpi_init_irqchip_fwnodes(void);
 struct fwnode_handle *acpi_rintc_get_fwnode(u32 uid);
 struct fwnode_handle *acpi_imsic_get_fwnode(struct device *dev);
 void riscv_acpi_aplic_platform_init(void);
+struct fwnode_handle *aplic_get_gsi_domain_id(u32 gsi);
 #else
 static inline struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu)
 {
