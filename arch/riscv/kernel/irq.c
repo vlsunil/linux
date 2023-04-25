@@ -5,11 +5,13 @@
  * Copyright (C) 2018 Christoph Hellwig
  */
 
+#include <linux/acpi.h>
 #include <linux/interrupt.h>
 #include <linux/irqchip.h>
 #include <linux/irqdomain.h>
 #include <linux/module.h>
 #include <linux/seq_file.h>
+#include <asm/acpi.h>
 #include <asm/sbi.h>
 
 static struct fwnode_handle *(*__get_intc_node)(void);
@@ -36,6 +38,7 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 
 void __init init_IRQ(void)
 {
+	acpi_init_irqchip_fwnodes();
 	irqchip_init();
 	if (!handle_arch_irq)
 		panic("No interrupt controller found.");
