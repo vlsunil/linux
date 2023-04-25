@@ -65,6 +65,7 @@ int acpi_get_riscv_isa(struct acpi_table_header *table,
 		       unsigned int cpu, const char **isa);
 
 static inline int acpi_numa_get_nid(unsigned int cpu) { return NUMA_NO_NODE; }
+void acpi_init_irqchip_fwnodes(void);
 #else
 static inline struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu)
 {
@@ -77,6 +78,7 @@ static inline int acpi_get_riscv_isa(struct acpi_table_header *table,
 	return -EINVAL;
 }
 
+static inline void acpi_init_irqchip_fwnodes(void) { }
 #endif /* CONFIG_ACPI */
 
 #endif /*_ASM_ACPI_H*/
