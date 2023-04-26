@@ -774,6 +774,7 @@ static inline u64 acpi_arch_get_root_pointer(void)
 int acpi_get_local_address(acpi_handle handle, u32 *addr);
 const char *acpi_get_subsystem_id(acpi_handle handle);
 
+void acpi_arch_device_init(void);
 #else	/* !CONFIG_ACPI */
 
 #define acpi_disabled 1
@@ -1082,6 +1083,8 @@ static inline bool acpi_sleep_state_supported(u8 sleep_state)
 {
 	return false;
 }
+
+static inline void __init acpi_arch_device_init(void) { }
 
 #endif	/* !CONFIG_ACPI */
 
