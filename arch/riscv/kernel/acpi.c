@@ -224,6 +224,11 @@ void *acpi_os_ioremap(acpi_physical_address phys, acpi_size size)
 	return memremap(phys, size, MEMREMAP_WB);
 }
 
+void __init acpi_arch_device_init(void)
+{
+	riscv_acpi_aplic_platform_init();
+}
+
 #ifdef CONFIG_PCI
 
 /*
