@@ -70,6 +70,8 @@ void acpi_init_irqchip_fwnodes(void);
 struct fwnode_handle *acpi_rintc_get_fwnode(u32 uid);
 struct fwnode_handle *acpi_imsic_get_fwnode(struct device *dev);
 void riscv_acpi_aplic_platform_init(void);
+int acpi_get_cbo_block_size(struct acpi_table_header *table, unsigned int cpu, u32 *cbom_size,
+			    u32 *cboz_size, u32 *cbop_size);
 #else
 static inline void acpi_init_rintc_map(void) { }
 static inline struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu)
@@ -84,6 +86,13 @@ static inline int acpi_get_riscv_isa(struct acpi_table_header *table,
 }
 
 static inline void acpi_init_irqchip_fwnodes(void) { }
+static inline int acpi_get_cbo_block_size(struct acpi_table_header *table,
+					  unsigned int cpu, u32 *cbom_size,
+					  u32 *cboz_size, u32 *cbop_size)
+{
+	return -EINVAL;
+}
+
 #endif /* CONFIG_ACPI */
 
 #endif /*_ASM_ACPI_H*/
