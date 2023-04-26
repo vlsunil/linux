@@ -1386,6 +1386,11 @@ static int __init acpi_bus_init(void)
 struct kobject *acpi_kobj;
 EXPORT_SYMBOL_GPL(acpi_kobj);
 
+void __weak acpi_arch_device_init(void)
+{
+	return;
+}
+
 static int __init acpi_init(void)
 {
 	int result;
@@ -1410,6 +1415,7 @@ static int __init acpi_init(void)
 	acpi_init_ffh();
 
 	pci_mmcfg_late_init();
+	acpi_arch_device_init();
 	acpi_iort_init();
 	acpi_viot_early_init();
 	acpi_hest_init();
