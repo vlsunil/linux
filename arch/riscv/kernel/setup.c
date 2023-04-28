@@ -21,6 +21,7 @@
 #include <linux/efi.h>
 #include <linux/crash_dump.h>
 
+#include <asm/acpi.h>
 #include <asm/alternative.h>
 #include <asm/cacheflush.h>
 #include <asm/cpu_ops.h>
@@ -292,6 +293,9 @@ void __init setup_arch(char **cmdline_p)
 #ifdef CONFIG_SMP
 	setup_smp();
 #endif
+
+	if (!acpi_disabled)
+		acpi_init_rintc_map();
 
 	riscv_init_cbo_blocksizes();
 	riscv_fill_hwcap();
