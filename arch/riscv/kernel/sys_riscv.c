@@ -10,6 +10,7 @@
 #include <asm/cpufeature.h>
 #include <asm/hwprobe.h>
 #include <asm/sbi.h>
+#include <asm/vector.h>
 #include <asm/switch_to.h>
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -161,6 +162,7 @@ static void hwprobe_one_pair(struct riscv_hwprobe *pair,
 	 */
 	case RISCV_HWPROBE_KEY_BASE_BEHAVIOR:
 		pair->value = RISCV_HWPROBE_BASE_BEHAVIOR_IMA;
+		pair->value |= RISCV_HWPROBE_BASE_BEHAVIOR_V;
 		break;
 
 	case RISCV_HWPROBE_KEY_IMA_EXT_0:
@@ -170,6 +172,13 @@ static void hwprobe_one_pair(struct riscv_hwprobe *pair,
 
 		if (riscv_isa_extension_available(NULL, c))
 			pair->value |= RISCV_HWPROBE_IMA_C;
+
+		break;
+
+	case RISCV_HWPROBE_KEY_V_EXT_0:
+		pair->value = 0;
+		if (has_vector())
+			pair->value |= RISCV_HWPROBE_V;
 
 		break;
 
