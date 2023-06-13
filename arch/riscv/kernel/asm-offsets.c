@@ -14,6 +14,8 @@
 #include <asm/thread_info.h>
 #include <asm/ptrace.h>
 #include <asm/cpu_ops_sbi.h>
+#include <asm/sbi.h>
+#include <asm/sse.h>
 #include <asm/stacktrace.h>
 #include <asm/suspend.h>
 
@@ -488,4 +490,18 @@ void asm_offsets(void)
 	DEFINE(STACKFRAME_SIZE_ON_STACK, ALIGN(sizeof(struct stackframe), STACK_ALIGN));
 	OFFSET(STACKFRAME_FP, stackframe, fp);
 	OFFSET(STACKFRAME_RA, stackframe, ra);
+
+	OFFSET(SSE_INTERRUPTED_EXEC_MODE, sse_interrupted_state, exec_mode);
+	OFFSET(SSE_INTERRUPTED_S0, sse_interrupted_state, s0);
+	OFFSET(SSE_INTERRUPTED_TP, sse_interrupted_state, tp);
+	OFFSET(SSE_INTERRUPTED_PC, sse_interrupted_state, pc);
+
+	DEFINE(STACKFRAME_SIZE_ON_STACK, ALIGN(sizeof(struct stackframe),
+					       STACK_ALIGN));
+	OFFSET(STACKFRAME_FP, stackframe, fp);
+	OFFSET(STACKFRAME_RA, stackframe, ra);
+	DEFINE(SBI_EXT_SSE, SBI_EXT_SSE);
+	DEFINE(SBI_SSE_EVENT_COMPLETE, SBI_SSE_EVENT_COMPLETE);
+
+	DEFINE(ASM_PAGE_OFFSET, CONFIG_PAGE_OFFSET);
 }
