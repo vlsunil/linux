@@ -707,8 +707,6 @@ void kvm_riscv_vcpu_aia_imsic_release(struct kvm_vcpu *vcpu)
 				 vcpu->arch.aia_context.imsic_addr,
 				 IMSIC_MMIO_PAGE_SZ);
 
-	/* TODO: Purge the IOMMU mapping ??? */
-
 	/*
 	 * At this point, all interrupt producers have been re-directed
 	 * to somewhere else so we move register state from the old IMSIC
@@ -725,6 +723,15 @@ void kvm_riscv_vcpu_aia_imsic_release(struct kvm_vcpu *vcpu)
 
 	/* Free-up old IMSIC VS-file */
 	kvm_riscv_aia_free_hgei(old_vsfile_cpu, old_vsfile_hgei);
+
+	if (kvm_arch_has_assigned_device(vcpu->kvm))
+		kvm_irq_routing_update(vcpu->kvm);
+}
+
+int kvm_arch_update_irqfd_routing(struct kvm *kvm, unsigned int host_irq,
+				  uint32_t guest_irq, bool set)
+{
+	return -ENXIO;
 }
 
 int kvm_riscv_vcpu_aia_imsic_update(struct kvm_vcpu *vcpu)
@@ -791,8 +798,6 @@ int kvm_riscv_vcpu_aia_imsic_update(struct kvm_vcpu *vcpu)
 	if (ret)
 		goto fail_free_vsfile_hgei;
 
-	/* TODO: Update the IOMMU mapping ??? */
-
 	/* Update new IMSIC VS-file details in IMSIC context */
 	write_lock_irqsave(&imsic->vsfile_lock, flags);
 	imsic->vsfile_hgei = new_vsfile_hgei;
@@ -822,6 +827,9 @@ int kvm_riscv_vcpu_aia_imsic_update(struct kvm_vcpu *vcpu)
 
 	/* Restore register state in the new IMSIC VS-file */
 	imsic_vsfile_local_update(new_vsfile_hgei, imsic->nr_hw_eix, &tmrif);
+
+	if (kvm_arch_has_assigned_device(vcpu->kvm))
+		kvm_irq_routing_update(vcpu->kvm);
 
 done:
 	/* Set VCPU HSTATUS.VGEIN to new IMSIC VS-file */
