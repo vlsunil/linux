@@ -569,8 +569,10 @@ static int __init plic_init(struct device_node *node,
 	return __plic_init(node, parent, 0);
 }
 
-IRQCHIP_DECLARE(sifive_plic, "sifive,plic-1.0.0", plic_init);
-IRQCHIP_DECLARE(riscv_plic0, "riscv,plic0", plic_init); /* for legacy systems */
+IRQCHIP_PLATFORM_DRIVER_BEGIN(sifive_plic)
+IRQCHIP_MATCH("sifive,plic-1.0.0", plic_init)
+IRQCHIP_MATCH("riscv,plic0", plic_init) /* for legacy systems */
+IRQCHIP_PLATFORM_DRIVER_END(sifive_plic)
 
 static int __init plic_edge_init(struct device_node *node,
 				 struct device_node *parent)
@@ -578,5 +580,7 @@ static int __init plic_edge_init(struct device_node *node,
 	return __plic_init(node, parent, BIT(PLIC_QUIRK_EDGE_INTERRUPT));
 }
 
-IRQCHIP_DECLARE(andestech_nceplic100, "andestech,nceplic100", plic_edge_init);
-IRQCHIP_DECLARE(thead_c900_plic, "thead,c900-plic", plic_edge_init);
+IRQCHIP_PLATFORM_DRIVER_BEGIN(edge_plic)
+IRQCHIP_MATCH("andestech,nceplic100", plic_edge_init)
+IRQCHIP_MATCH("thead,c900-plic", plic_edge_init)
+IRQCHIP_PLATFORM_DRIVER_END(edge_plic)
