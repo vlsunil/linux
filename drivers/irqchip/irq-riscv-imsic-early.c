@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <linux/smp.h>
+#include <linux/pci.h>
 
 #include "irq-riscv-imsic-state.h"
 
@@ -256,3 +257,29 @@ static int __init imsic_early_dt_init(struct device_node *node,
 	return 0;
 }
 IRQCHIP_DECLARE(riscv_imsic, "riscv,imsics", imsic_early_dt_init);
+
+#ifdef CONFIG_ACPI
+static int __init imsic_early_acpi_init(union acpi_subtable_headers *header,
+					const unsigned long end)
+{
+	struct fwnode_handle *fwnode;
+	int rc;
+
+	/*
+	 * There should be only one IMSIC node.
+	 */
+	fwnode =  acpi_riscv_get_msi_fwnode(NULL);
+	if (!fwnode) {
+		pr_err("unable to allocate IMSIC FW node\n");
+		return -ENOMEM;
+	}
+
+	rc = imsic_early_probe(fwnode);
+	if (!rc)
+		pci_msi_register_fwnode_provider(&acpi_riscv_get_msi_fwnode);
+
+	return rc;
+}
+IRQCHIP_ACPI_DECLARE(riscv_imsic, ACPI_MADT_TYPE_IMSIC,
+		     NULL, 1, imsic_early_acpi_init);
+#endif
