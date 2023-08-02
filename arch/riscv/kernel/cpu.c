@@ -123,7 +123,8 @@ old_interface:
  * To achieve this, we walk up the DT tree until we find an active
  * RISC-V core (HART) node and extract the cpuid from it.
  */
-int riscv_of_parent_hartid(struct device_node *node, unsigned long *hartid)
+static int riscv_of_parent_hartid(struct device_node *node,
+				  unsigned long *hartid)
 {
 	for (; node; node = node->parent) {
 		if (of_device_is_compatible(node, "riscv")) {
@@ -137,6 +138,16 @@ int riscv_of_parent_hartid(struct device_node *node, unsigned long *hartid)
 	}
 
 	return -1;
+}
+
+/* Find hart ID of the INTC fwnode. */
+int riscv_get_intc_hartid(struct fwnode_handle *node, unsigned long *hartid)
+{
+	/* Extend this function ACPI in the future. */
+	if (!is_of_node(node))
+		return -ENODEV;
+
+	return riscv_of_parent_hartid(to_of_node(node), hartid);
 }
 
 DEFINE_PER_CPU(struct riscv_cpuinfo, riscv_cpuinfo);
