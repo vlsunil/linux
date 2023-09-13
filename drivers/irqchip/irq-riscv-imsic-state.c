@@ -237,6 +237,94 @@ static int __init imsic_get_mmio_resource(struct fwnode_handle *fwnode,
 	return of_address_to_resource(to_of_node(fwnode), index, res);
 }
 
+static int imsic_dt_init_global(struct fwnode_handle *fwnode, struct imsic_global_config *global)
+{
+	u32 i, nr_parent_irqs = 0;
+	int rc;
+
+	/* Find number of guest index bits in MSI address */
+	rc = fwnode_property_read_u32_array(fwnode, "riscv,guest-index-bits",
+					    &global->guest_index_bits, 1);
+	if (rc)
+		global->guest_index_bits = 0;
+	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT;
+	if (i < global->guest_index_bits) {
+		pr_err("%pfwP: guest index bits too big\n", fwnode);
+		return -EINVAL;
+	}
+
+	/* Find number of HART index bits */
+	rc = fwnode_property_read_u32_array(fwnode, "riscv,hart-index-bits",
+					    &global->hart_index_bits, 1);
+	if (rc) {
+		/* Assume default value */
+		global->hart_index_bits = __fls(nr_parent_irqs);
+		if (BIT(global->hart_index_bits) < nr_parent_irqs)
+			global->hart_index_bits++;
+	}
+	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT - global->guest_index_bits;
+	if (i < global->hart_index_bits) {
+		pr_err("%pfwP: HART index bits too big\n", fwnode);
+		return -EINVAL;
+	}
+
+	/* Find number of group index bits */
+	rc = fwnode_property_read_u32_array(fwnode, "riscv,group-index-bits",
+					    &global->group_index_bits, 1);
+	if (rc)
+		global->group_index_bits = 0;
+	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT -
+	    global->guest_index_bits - global->hart_index_bits;
+	if (i < global->group_index_bits) {
+		pr_err("%pfwP: group index bits too big\n", fwnode);
+		return -EINVAL;
+	}
+
+	/*
+	 * Find first bit position of group index.
+	 * If not specified assumed the default APLIC-IMSIC configuration.
+	 */
+	rc = fwnode_property_read_u32_array(fwnode, "riscv,group-index-shift",
+					    &global->group_index_shift, 1);
+	if (rc)
+		global->group_index_shift = IMSIC_MMIO_PAGE_SHIFT * 2;
+	i = global->group_index_bits + global->group_index_shift - 1;
+	if (i >= BITS_PER_LONG) {
+		pr_err("%pfwP: group index shift too big\n", fwnode);
+		return -EINVAL;
+	}
+
+	/* Find number of interrupt identities */
+	rc = fwnode_property_read_u32_array(fwnode, "riscv,num-ids",
+					    &global->nr_ids, 1);
+	if (rc) {
+		pr_err("%pfwP: number of interrupt identities not found\n",
+			fwnode);
+		return -EINVAL;
+	}
+	if ((global->nr_ids < IMSIC_MIN_ID) ||
+	    (global->nr_ids >= IMSIC_MAX_ID) ||
+	    ((global->nr_ids & IMSIC_MIN_ID) != IMSIC_MIN_ID)) {
+		pr_err("%pfwP: invalid number of interrupt identities\n",
+			fwnode);
+		return -EINVAL;
+	}
+
+	/* Find number of guest interrupt identities */
+	if (fwnode_property_read_u32_array(fwnode, "riscv,num-guest-ids",
+					   &global->nr_guest_ids, 1))
+		global->nr_guest_ids = global->nr_ids;
+	if ((global->nr_guest_ids < IMSIC_MIN_ID) ||
+	    (global->nr_guest_ids >= IMSIC_MAX_ID) ||
+	    ((global->nr_guest_ids & IMSIC_MIN_ID) != IMSIC_MIN_ID)) {
+		pr_err("%pfwP: invalid number of guest interrupt identities\n",
+			fwnode);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 int __init imsic_setup_state(struct fwnode_handle *fwnode)
 {
 	int rc, cpu;
@@ -278,6 +366,15 @@ int __init imsic_setup_state(struct fwnode_handle *fwnode)
 		goto out_free_priv;
 	}
 
+	if (is_of_node(fwnode)) {
+		if (imsic_dt_init_global(fwnode, global)) {
+			rc = -EINVAL;
+			goto out_free_local;
+		}
+	} else {
+		rc = -EINVAL;
+		goto out_free_local;
+	}
 	/* Find number of parent interrupts */
 	nr_parent_irqs = 0;
 	while (!imsic_get_parent_hartid(fwnode, nr_parent_irqs, &hartid))
@@ -287,93 +384,6 @@ int __init imsic_setup_state(struct fwnode_handle *fwnode)
 		rc = -EINVAL;
 		goto out_free_local;
 	}
-
-	/* Find number of guest index bits in MSI address */
-	rc = fwnode_property_read_u32_array(fwnode, "riscv,guest-index-bits",
-					    &global->guest_index_bits, 1);
-	if (rc)
-		global->guest_index_bits = 0;
-	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT;
-	if (i < global->guest_index_bits) {
-		pr_err("%pfwP: guest index bits too big\n", fwnode);
-		rc = -EINVAL;
-		goto out_free_local;
-	}
-
-	/* Find number of HART index bits */
-	rc = fwnode_property_read_u32_array(fwnode, "riscv,hart-index-bits",
-					    &global->hart_index_bits, 1);
-	if (rc) {
-		/* Assume default value */
-		global->hart_index_bits = __fls(nr_parent_irqs);
-		if (BIT(global->hart_index_bits) < nr_parent_irqs)
-			global->hart_index_bits++;
-	}
-	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT - global->guest_index_bits;
-	if (i < global->hart_index_bits) {
-		pr_err("%pfwP: HART index bits too big\n", fwnode);
-		rc = -EINVAL;
-		goto out_free_local;
-	}
-
-	/* Find number of group index bits */
-	rc = fwnode_property_read_u32_array(fwnode, "riscv,group-index-bits",
-					    &global->group_index_bits, 1);
-	if (rc)
-		global->group_index_bits = 0;
-	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT -
-	    global->guest_index_bits - global->hart_index_bits;
-	if (i < global->group_index_bits) {
-		pr_err("%pfwP: group index bits too big\n", fwnode);
-		rc = -EINVAL;
-		goto out_free_local;
-	}
-
-	/*
-	 * Find first bit position of group index.
-	 * If not specified assumed the default APLIC-IMSIC configuration.
-	 */
-	rc = fwnode_property_read_u32_array(fwnode, "riscv,group-index-shift",
-					    &global->group_index_shift, 1);
-	if (rc)
-		global->group_index_shift = IMSIC_MMIO_PAGE_SHIFT * 2;
-	i = global->group_index_bits + global->group_index_shift - 1;
-	if (i >= BITS_PER_LONG) {
-		pr_err("%pfwP: group index shift too big\n", fwnode);
-		rc = -EINVAL;
-		goto out_free_local;
-	}
-
-	/* Find number of interrupt identities */
-	rc = fwnode_property_read_u32_array(fwnode, "riscv,num-ids",
-					    &global->nr_ids, 1);
-	if (rc) {
-		pr_err("%pfwP: number of interrupt identities not found\n",
-			fwnode);
-		goto out_free_local;
-	}
-	if ((global->nr_ids < IMSIC_MIN_ID) ||
-	    (global->nr_ids >= IMSIC_MAX_ID) ||
-	    ((global->nr_ids & IMSIC_MIN_ID) != IMSIC_MIN_ID)) {
-		pr_err("%pfwP: invalid number of interrupt identities\n",
-			fwnode);
-		rc = -EINVAL;
-		goto out_free_local;
-	}
-
-	/* Find number of guest interrupt identities */
-	if (fwnode_property_read_u32_array(fwnode, "riscv,num-guest-ids",
-					   &global->nr_guest_ids, 1))
-		global->nr_guest_ids = global->nr_ids;
-	if ((global->nr_guest_ids < IMSIC_MIN_ID) ||
-	    (global->nr_guest_ids >= IMSIC_MAX_ID) ||
-	    ((global->nr_guest_ids & IMSIC_MIN_ID) != IMSIC_MIN_ID)) {
-		pr_err("%pfwP: invalid number of guest interrupt identities\n",
-			fwnode);
-		rc = -EINVAL;
-		goto out_free_local;
-	}
-
 	/* Compute base address */
 	rc = imsic_get_mmio_resource(fwnode, 0, &res);
 	if (rc) {
