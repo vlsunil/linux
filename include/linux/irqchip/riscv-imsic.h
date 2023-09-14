@@ -73,10 +73,21 @@ struct imsic_global_config {
 #ifdef CONFIG_RISCV_IMSIC
 
 extern const struct imsic_global_config *imsic_get_global_config(void);
+struct fwnode_handle *imsic_acpi_get_fwnode(struct device *dev);
 
 #else
 
 static inline const struct imsic_global_config *imsic_get_global_config(void)
+{
+	return NULL;
+}
+
+static inline struct fwnode_handle *imsic_acpi_get_fwnode(struct device *dev)
+{
+	return NULL;
+}
+
+static inline struct fwnode_handle  __init *imsic_acpi_get_fwnode(void)
 {
 	return NULL;
 }

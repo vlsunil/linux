@@ -12,6 +12,7 @@
 #include <linux/irqchip.h>
 #include <linux/irqchip/chained_irq.h>
 #include <linux/module.h>
+#include <linux/pci.h>
 #include <linux/spinlock.h>
 #include <linux/smp.h>
 
@@ -193,13 +194,13 @@ static int imsic_dying_cpu(unsigned int cpu)
 	return 0;
 }
 
-static int __init imsic_early_probe(struct fwnode_handle *fwnode)
+static int __init imsic_early_probe(struct fwnode_handle *fwnode, void *opaque)
 {
 	int rc;
 	struct irq_domain *domain;
 
 	/* Setup IMSIC state */
-	rc = imsic_setup_state(fwnode);
+	rc = imsic_setup_state(fwnode, opaque);
 	if (rc) {
 		pr_err("%pfwP: failed to setup state (error %d)\n",
 			fwnode, rc);
@@ -247,7 +248,7 @@ static int __init imsic_early_dt_init(struct device_node *node,
 	int rc;
 
 	/* Do early setup of IMSIC state and IPIs */
-	rc = imsic_early_probe(&node->fwnode);
+	rc = imsic_early_probe(&node->fwnode, NULL);
 	if (rc)
 		return rc;
 
@@ -256,3 +257,36 @@ static int __init imsic_early_dt_init(struct device_node *node,
 	return 0;
 }
 IRQCHIP_DECLARE(riscv_imsic, "riscv,imsics", imsic_early_dt_init);
+
+#ifdef CONFIG_ACPI
+
+static struct fwnode_handle *imsic_acpi_fwnode;
+
+struct fwnode_handle *imsic_acpi_get_fwnode(struct device *dev)
+{
+	return imsic_acpi_fwnode;
+}
+
+static int __init imsic_early_acpi_init(union acpi_subtable_headers *header,
+				        const unsigned long end)
+{
+	struct acpi_madt_imsic *imsic = (struct acpi_madt_imsic *)header;
+	int rc;
+
+	imsic_acpi_fwnode = irq_domain_alloc_named_fwnode("RISCV-IMSIC");
+	if (!imsic_acpi_fwnode) {
+		pr_err("unable to allocate IMSIC FW node\n");
+		return -ENOMEM;
+	}
+
+	/* Do early setup of IMSIC state and IPIs */
+	rc = imsic_early_probe(imsic_acpi_fwnode, imsic);
+	if (!rc)
+		pci_msi_register_fwnode_provider(&imsic_acpi_get_fwnode);
+
+	return rc;
+}
+
+IRQCHIP_ACPI_DECLARE(riscv_imsic_early, ACPI_MADT_TYPE_IMSIC, NULL,
+		     1, imsic_early_acpi_init);
+#endif
