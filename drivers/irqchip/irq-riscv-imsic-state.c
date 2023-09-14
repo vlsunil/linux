@@ -5,6 +5,7 @@
  */
 
 #define pr_fmt(fmt) "riscv-imsic: " fmt
+#include <linux/acpi.h>
 #include <linux/bitmap.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
@@ -203,38 +204,104 @@ static void __init imsic_ids_cleanup(void)
 	bitmap_free(imsic->ids_used_bimap);
 }
 
+#ifdef CONFIG_ACPI
+
+static int imsic_acpi_init_global(struct imsic_global_config *global,
+				  void *opaque)
+{
+	struct acpi_madt_imsic *imsic = (struct acpi_madt_imsic *)opaque;
+	u32 i;
+
+	global->guest_index_bits = imsic->guest_index_bits;
+	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT;
+	if (i < global->guest_index_bits) {
+		pr_err("IMSIC guest index bits too big\n");
+		return -EINVAL;
+	}
+
+	global->hart_index_bits = imsic->hart_index_bits;
+	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT - global->guest_index_bits;
+	if (i < global->hart_index_bits) {
+		pr_err("IMSIC HART index bits too big\n");
+		return -EINVAL;
+	}
+
+	global->group_index_bits = imsic->group_index_bits;
+	i = BITS_PER_LONG - IMSIC_MMIO_PAGE_SHIFT -
+	    global->guest_index_bits - global->hart_index_bits;
+	if (i < global->group_index_bits) {
+		pr_err("IMSIC group index bits too big\n");
+		return -EINVAL;
+	}
+
+	global->group_index_shift = imsic->group_index_shift;
+	i = global->group_index_bits + global->group_index_shift - 1;
+	if (i >= BITS_PER_LONG) {
+		pr_err("IMSIC group index shift too big\n");
+		return -EINVAL;
+	}
+
+	global->nr_ids = imsic->num_ids;
+	if ((global->nr_ids < IMSIC_MIN_ID) ||
+	    (global->nr_ids >= IMSIC_MAX_ID) ||
+	    ((global->nr_ids & IMSIC_MIN_ID) != IMSIC_MIN_ID)) {
+		pr_err("IMSIC invalid number of interrupt identities\n");
+		return -EINVAL;
+	}
+
+	global->nr_guest_ids = imsic->num_guest_ids;
+	if ((global->nr_guest_ids < IMSIC_MIN_ID) ||
+	    (global->nr_guest_ids >= IMSIC_MAX_ID) ||
+	    ((global->nr_guest_ids & IMSIC_MIN_ID) != IMSIC_MIN_ID)) {
+		pr_err("IMSIC invalid number of guest interrupt identities\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+#endif
+
 static int __init imsic_get_parent_hartid(struct fwnode_handle *fwnode,
 					  u32 index, unsigned long *hartid)
 {
 	int rc;
 	struct fwnode_reference_args parent;
 
-	rc = fwnode_property_get_reference_args(fwnode,
-			"interrupts-extended", "#interrupt-cells",
-			0, index, &parent);
-	if (rc)
-		return rc;
+	if (is_of_node(fwnode)) {
+		rc = fwnode_property_get_reference_args(fwnode,
+				"interrupts-extended", "#interrupt-cells",
+				0, index, &parent);
+		if (rc)
+			return rc;
 
-	/*
-	 * Skip interrupts other than external interrupts for
-	 * current privilege level.
-	 */
-	if (parent.args[0] != RV_IRQ_EXT)
-		return -EINVAL;
+		/*
+		 * Skip interrupts other than external interrupts for
+		 * current privilege level.
+		 */
+		if (parent.args[0] != RV_IRQ_EXT)
+			return -EINVAL;
 
-	return riscv_get_intc_hartid(parent.fwnode, hartid);
+		return riscv_get_intc_hartid(parent.fwnode, hartid);
+	}
+#ifdef CONFIG_ACPI
+	else {
+		return acpi_get_intc_index_hartid(index, hartid);
+	}
+#endif
 }
 
 static int __init imsic_get_mmio_resource(struct fwnode_handle *fwnode,
 					  u32 index, struct resource *res)
 {
-	/*
-	 * Currently, only OF fwnode is support so extend this function
-	 * for other types of fwnode for ACPI support.
-	 */
-	if (!is_of_node(fwnode))
-		return -EINVAL;
-	return of_address_to_resource(to_of_node(fwnode), index, res);
+	if (is_of_node(fwnode)) {
+		return of_address_to_resource(to_of_node(fwnode), index, res);
+	}
+#ifdef CONFIG_ACPI
+	else {
+		return acpi_get_imsic_mmio_info(index, res);
+	}
+#endif
 }
 
 static int imsic_dt_init_global(struct fwnode_handle *fwnode, struct imsic_global_config *global)
@@ -325,7 +392,7 @@ static int imsic_dt_init_global(struct fwnode_handle *fwnode, struct imsic_globa
 	return 0;
 }
 
-int __init imsic_setup_state(struct fwnode_handle *fwnode)
+int __init imsic_setup_state(struct fwnode_handle *fwnode, void *opaque)
 {
 	int rc, cpu;
 	phys_addr_t base_addr;
@@ -371,10 +438,16 @@ int __init imsic_setup_state(struct fwnode_handle *fwnode)
 			rc = -EINVAL;
 			goto out_free_local;
 		}
-	} else {
-		rc = -EINVAL;
-		goto out_free_local;
 	}
+#ifdef CONFIG_ACPI
+	else {
+		if (imsic_acpi_init_global(global, opaque)) {
+			rc = -EINVAL;
+			goto out_free_local;
+		}
+	}
+#endif
+
 	/* Find number of parent interrupts */
 	nr_parent_irqs = 0;
 	while (!imsic_get_parent_hartid(fwnode, nr_parent_irqs, &hartid))
