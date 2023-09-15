@@ -56,6 +56,7 @@ static inline void enable_acpi(void)
 #define APLIC_PLIC_ID(x) ((x) >> 24)
 #define IDC_CONTEXT_ID(x) ((x) & 0x0000ffff)
 #define MAX_APLICS 32
+#define MAX_PLICS 32
 
 /*
  * Since MADT must provide at least one RINTC structure, the
