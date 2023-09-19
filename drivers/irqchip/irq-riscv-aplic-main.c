@@ -4,10 +4,13 @@
  * Copyright (C) 2022 Ventana Micro Systems Inc.
  */
 
+#include <linux/acpi.h>
 #include <linux/printk.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/irqchip/riscv-aplic.h>
+#include <linux/irqchip/riscv-imsic.h>
+#include <asm/acpi.h>
 
 #include "irq-riscv-aplic-main.h"
 
@@ -135,48 +138,76 @@ int aplic_setup_priv(struct aplic_priv *priv, struct device *dev,
 		     void __iomem *regs)
 {
 	struct fwnode_reference_args parent;
+	struct acpi_madt_aplic *aplic;
 	int rc;
 
 	/* Save device pointer and register base */
 	priv->dev = dev;
 	priv->regs = regs;
 
-	/*
-	 * Find out GSI base number
-	 *
-	 * Note: DT does not define "riscv,gsi-base" property so GSI
-	 * base is always zero for DT.
-	 */
-	rc = fwnode_property_read_u32_array(dev->fwnode, "riscv,gsi-base",
-					    &priv->gsi_base, 1);
-	if (rc)
-		priv->gsi_base = 0;
+	if (is_of_node(dev->fwnode)) {
+		/*
+		 * Find out GSI base number
+		 *
+		 * Note: DT does not define "riscv,gsi-base" property so GSI
+		 * base is always zero for DT.
+		 */
+		rc = fwnode_property_read_u32_array(dev->fwnode, "riscv,gsi-base",
+						    &priv->gsi_base, 1);
+		if (rc)
+			priv->gsi_base = 0;
 
-	/* Find out number of interrupt sources */
-	rc = fwnode_property_read_u32_array(dev->fwnode, "riscv,num-sources",
-					    &priv->nr_irqs, 1);
-	if (rc) {
-		dev_err(dev, "failed to get number of interrupt sources\n");
-		return rc;
+		/* Find out number of interrupt sources */
+		rc = fwnode_property_read_u32_array(dev->fwnode, "riscv,num-sources",
+						    &priv->nr_irqs, 1);
+		if (rc) {
+			dev_err(dev, "failed to get number of interrupt sources\n");
+			return rc;
+		}
+
+		/*
+		 * Find out number of IDCs based on parent interrupts
+		 *
+		 * If "msi-parent" property is present then we ignore the
+		 * APLIC IDCs which forces the APLIC driver to use MSI mode.
+		 */
+		if (!fwnode_property_present(dev->fwnode, "msi-parent")) {
+			while (!fwnode_property_get_reference_args(dev->fwnode,
+					"interrupts-extended", "#interrupt-cells",
+					0, priv->nr_idcs, &parent))
+				priv->nr_idcs++;
+		}
+	} else {
+		aplic = *(struct acpi_madt_aplic **)dev_get_platdata(dev);
+		if (!aplic) {
+			dev_err(dev, "APLIC platform data is NULL!\n");
+			return -1;
+		}
+		priv->gsi_base = aplic->gsi_base;
+		priv->nr_irqs = aplic->num_sources;
+		priv->nr_idcs = aplic->num_idcs;
+		priv->id = aplic->id;
 	}
 
 	/* Setup initial state APLIC interrupts */
 	aplic_init_hw_irqs(priv);
 
-	/*
-	 * Find out number of IDCs based on parent interrupts
-	 *
-	 * If "msi-parent" property is present then we ignore the
-	 * APLIC IDCs which forces the APLIC driver to use MSI mode.
-	 */
-	if (!fwnode_property_present(dev->fwnode, "msi-parent")) {
-		while (!fwnode_property_get_reference_args(dev->fwnode,
-				"interrupts-extended", "#interrupt-cells",
-				0, priv->nr_idcs, &parent))
-			priv->nr_idcs++;
-	}
-
 	return 0;
+}
+
+static int aplic_is_imsic_present(struct fwnode_handle *fwnode)
+{
+	if (is_of_node(fwnode)) {
+		if (fwnode_property_present(fwnode, "msi-parent"))
+			return 1;
+
+		return 0;
+	} else {
+		if (imsic_acpi_get_fwnode(NULL))
+			return 1;
+
+		return 0;
+	}
 }
 
 static int aplic_probe(struct platform_device *pdev)
@@ -184,6 +215,7 @@ static int aplic_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	void __iomem *regs;
+	int is_msi_present = 0;
 	int rc;
 
 	/* Map the MMIO registers */
@@ -202,14 +234,14 @@ static int aplic_probe(struct platform_device *pdev)
 	 * If msi-parent property is present then setup APLIC MSI mode
 	 * otherwise setup APLIC direct mode.
 	 */
-	if (fwnode_property_present(dev->fwnode, "msi-parent"))
+	is_msi_present = aplic_is_imsic_present(dev->fwnode);
+	if (is_msi_present)
 		rc = aplic_msi_setup(dev, regs);
 	else
 		rc = aplic_direct_setup(dev, regs);
 	if (rc) {
 		dev_err(dev, "failed setup APLIC in %s mode\n",
-			fwnode_property_present(dev->fwnode, "msi-parent") ?
-			"MSI" : "direct");
+			is_msi_present ? "MSI" : "direct");
 		return rc;
 	}
 
