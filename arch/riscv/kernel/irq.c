@@ -107,6 +107,7 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 void __init init_IRQ(void)
 {
 	init_irq_stacks();
+	acpi_rintc_info_init();
 	irqchip_init();
 	if (!handle_arch_irq)
 		panic("No interrupt controller found.");
