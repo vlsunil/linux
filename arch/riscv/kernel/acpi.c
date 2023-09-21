@@ -32,6 +32,12 @@ static bool param_acpi_force __initdata;
 
 static struct acpi_madt_rintc cpu_madt_rintc[NR_CPUS];
 
+static struct
+{
+	u32 nr_rintc;
+	struct acpi_madt_rintc *rintc;
+} rintc_acpi_data;
+
 static int __init parse_acpi(char *arg)
 {
 	if (!arg)
@@ -194,6 +200,77 @@ struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu)
 u32 get_acpi_id_for_cpu(int cpu)
 {
 	return acpi_cpu_get_madt_rintc(cpu)->uid;
+}
+
+static int __init acpi_count_madt_rintc(union acpi_subtable_headers *header,
+				        const unsigned long end)
+{
+	return 0;
+}
+
+static int __init acpi_init_madt_rintc(union acpi_subtable_headers *header,
+				       const unsigned long end)
+{
+	struct acpi_madt_rintc *rintc = (struct acpi_madt_rintc *)header;
+	static int count = 0;
+
+	rintc_acpi_data.rintc[count++] = *rintc;
+	return 0;
+}
+
+void acpi_rintc_info_init(void)
+{
+	if (rintc_acpi_data.rintc)
+		return;
+
+	rintc_acpi_data.nr_rintc = acpi_table_parse_madt(ACPI_MADT_TYPE_RINTC,
+							 acpi_count_madt_rintc, 0);
+	if (rintc_acpi_data.nr_rintc <= 0)
+		return;
+
+	rintc_acpi_data.rintc = kcalloc(rintc_acpi_data.nr_rintc,
+					sizeof(*rintc_acpi_data.rintc), GFP_KERNEL);
+	if (!rintc_acpi_data.rintc)
+		return;
+
+	acpi_table_parse_madt(ACPI_MADT_TYPE_RINTC, acpi_init_madt_rintc, 0);
+}
+
+int acpi_get_intc_index_hartid(u32 index, unsigned long *hartid)
+{
+	if (index >= rintc_acpi_data.nr_rintc)
+		return -1;
+
+	*hartid = rintc_acpi_data.rintc[index].hart_id;
+	return 0;
+}
+
+int acpi_get_ext_intc_parent_hartid(u8 id, u32 idx, unsigned long *hartid)
+{
+	int i, j = 0;
+
+	for (i = 0; i < rintc_acpi_data.nr_rintc; i++) {
+		if (APLIC_PLIC_ID(rintc_acpi_data.rintc[i].ext_intc_id) == id) {
+			if (idx == j) {
+				*hartid = rintc_acpi_data.rintc[i].hart_id;
+				return 0;
+			}
+			j++;
+		}
+	}
+
+	return -1;
+}
+
+int acpi_get_imsic_mmio_info(u32 index, struct resource *res)
+{
+	if (index >= rintc_acpi_data.nr_rintc)
+		return -1;
+
+	res->start = rintc_acpi_data.rintc[index].imsic_addr;
+	res->end = res->start + rintc_acpi_data.rintc[index].imsic_size - 1;
+	res->flags = IORESOURCE_MEM;
+	return 0;
 }
 
 /*
