@@ -4,6 +4,7 @@
  * Copyright (C) 2022 Ventana Micro Systems Inc.
  */
 
+#include <linux/acpi.h>
 #include <linux/bitops.h>
 #include <linux/cpu.h>
 #include <linux/interrupt.h>
@@ -14,6 +15,7 @@
 #include <linux/of_address.h>
 #include <linux/printk.h>
 #include <linux/smp.h>
+#include <asm/acpi.h>
 
 #include "irq-riscv-aplic-main.h"
 
@@ -226,25 +228,33 @@ int aplic_direct_setup(struct device *dev, void __iomem *regs)
 
 	/* Setup per-CPU IDC and target CPU mask */
 	for (i = 0; i < priv->nr_idcs; i++) {
-		rc = fwnode_property_get_reference_args(dev->fwnode,
-				"interrupts-extended", "#interrupt-cells",
-				0, i, &parent);
-		if (rc) {
-			dev_warn(dev, "parent irq for IDC%d not found\n", i);
-			continue;
-		}
+		if (is_of_node(dev->fwnode)) {
+			rc = fwnode_property_get_reference_args(dev->fwnode,
+					"interrupts-extended", "#interrupt-cells",
+					0, i, &parent);
+			if (rc) {
+				dev_warn(dev, "parent irq for IDC%d not found\n", i);
+				continue;
+			}
 
-		/*
-		 * Skip interrupts other than external interrupts for
-		 * current privilege level.
-		 */
-		if (parent.args[0] != RV_IRQ_EXT)
-			continue;
+			/*
+			 * Skip interrupts other than external interrupts for
+			 * current privilege level.
+			 */
+			if (parent.args[0] != RV_IRQ_EXT)
+				continue;
 
-		rc = riscv_get_intc_hartid(parent.fwnode, &hartid);
-		if (rc) {
-			dev_warn(dev, "invalid hartid for IDC%d\n", i);
-			continue;
+			rc = riscv_get_intc_hartid(parent.fwnode, &hartid);
+			if (rc) {
+				dev_warn(dev, "invalid hartid for IDC%d\n", i);
+				continue;
+			}
+		} else {
+			rc = acpi_get_ext_intc_parent_hartid(priv->id, i, &hartid);
+			if (rc) {
+				dev_warn(dev, "invalid hartid for IDC%d\n", i);
+				continue;
+			}
 		}
 
 		cpu = riscv_hartid_to_cpuid(hartid);
