@@ -3,6 +3,7 @@
  * Copyright (C) 2017 SiFive
  * Copyright (C) 2018 Christoph Hellwig
  */
+#include <linux/acpi.h>
 #include <linux/cpu.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -68,6 +69,7 @@ struct plic_priv {
 	unsigned long plic_quirks;
 	unsigned int nr_irqs;
 	unsigned long *prio_save;
+	u32 gsi_base;
 };
 
 struct plic_handler {
@@ -314,6 +316,10 @@ static int plic_irq_domain_translate(struct irq_domain *d,
 {
 	struct plic_priv *priv = d->host_data;
 
+	/* For DT, gsi_base is always zero. */
+	if (fwspec->param[0] >= priv->gsi_base)
+		fwspec->param[0] = fwspec->param[0] - priv->gsi_base;
+
 	if (test_bit(PLIC_QUIRK_EDGE_INTERRUPT, &priv->plic_quirks))
 		return irq_domain_translate_twocell(d, fwspec, hwirq, type);
 
@@ -420,12 +426,14 @@ static int plic_probe(struct platform_device *pdev)
 	unsigned long plic_quirks = 0, hartid;
 	struct fwnode_reference_args parent;
 	struct device *dev = &pdev->dev;
+	struct acpi_madt_plic *plic;
 	struct plic_handler *handler;
 	struct irq_domain *domain;
 	struct plic_priv *priv;
 	irq_hw_number_t hwirq;
 	struct resource *res;
 	bool cpuhp_setup;
+	int context_id;
 	u32 nr_irqs;
 
 	if (is_of_node(dev->fwnode)) {
@@ -453,11 +461,39 @@ static int plic_probe(struct platform_device *pdev)
 		return -EIO;
 	}
 
-	rc = fwnode_property_read_u32_array(dev->fwnode, "riscv,ndev",
-						&nr_irqs, 1);
-	if (rc) {
-		dev_err(dev, "riscv,ndev property not available\n");
-		return rc;
+	if (is_of_node(dev->fwnode)) {
+		nr_contexts = 0;
+		while (!fwnode_property_get_reference_args(dev->fwnode,
+					"interrupts-extended", "#interrupt-cells",
+					0, nr_contexts, &parent))
+			nr_contexts++;
+		if (WARN_ON(!nr_contexts)) {
+			dev_err(dev, "no PLIC context available\n");
+			return -EINVAL;
+		}
+
+		rc = fwnode_property_read_u32_array(dev->fwnode, "riscv,ndev",
+							&nr_irqs, 1);
+		if (rc) {
+			dev_err(dev, "riscv,ndev property not available\n");
+			return rc;
+		}
+	} else {
+		plic = *(struct acpi_madt_plic **)dev_get_platdata(dev);
+		if (!plic) {
+			dev_err(dev, "PLIC platform data is NULL!\n");
+			return -EINVAL;
+		}
+
+		nr_irqs = plic->num_irqs;
+		acpi_get_plic_nr_contexts(plic->id, &nr_contexts);
+		if (WARN_ON(!nr_contexts)) {
+			dev_err(dev, "no PLIC context available\n");
+			return -EINVAL;
+		}
+
+		priv->gsi_base = plic->gsi_base;
+
 	}
 	priv->nr_irqs = nr_irqs;
 
@@ -465,46 +501,51 @@ static int plic_probe(struct platform_device *pdev)
 	if (!priv->prio_save)
 		return -ENOMEM;
 
-	nr_contexts = 0;
-	while (!fwnode_property_get_reference_args(dev->fwnode,
-				"interrupts-extended", "#interrupt-cells",
-				0, nr_contexts, &parent))
-		nr_contexts++;
-	if (WARN_ON(!nr_contexts)) {
-		dev_err(dev, "no PLIC context available\n");
-		return -EINVAL;
-	}
-
 	for (i = 0; i < nr_contexts; i++) {
-		rc = fwnode_property_get_reference_args(dev->fwnode,
-				"interrupts-extended", "#interrupt-cells",
-				0, i, &parent);
-		if (rc) {
-			dev_warn(dev, "parent irq for context%d not found\n", i);
-			continue;
-		}
-
-		/*
-		 * Skip contexts other than external interrupts for our
-		 * privilege level.
-		 */
-		if (parent.args[0] != RV_IRQ_EXT) {
-			/* Disable S-mode enable bits if running in M-mode. */
-			if (IS_ENABLED(CONFIG_RISCV_M_MODE)) {
-				void __iomem *enable_base = priv->regs +
-					CONTEXT_ENABLE_BASE +
-					i * CONTEXT_ENABLE_SIZE;
-
-				for (hwirq = 1; hwirq <= nr_irqs; hwirq++)
-					__plic_toggle(enable_base, hwirq, 0);
+		if (is_of_node(dev->fwnode)) {
+			context_id = i;
+			rc = fwnode_property_get_reference_args(dev->fwnode,
+					"interrupts-extended", "#interrupt-cells",
+					0, i, &parent);
+			if (rc) {
+				dev_warn(dev, "parent irq for context%d not found\n", i);
+				continue;
 			}
-			continue;
-		}
 
-		rc = riscv_get_intc_hartid(parent.fwnode, &hartid);
-		if (rc < 0) {
-			dev_warn(dev, "failed to get hart ID for context%d.\n", i);
-			continue;
+			/*
+			 * Skip contexts other than external interrupts for our
+			 * privilege level.
+			 */
+			if (parent.args[0] != RV_IRQ_EXT) {
+				/* Disable S-mode enable bits if running in M-mode. */
+				if (IS_ENABLED(CONFIG_RISCV_M_MODE)) {
+					void __iomem *enable_base = priv->regs +
+						CONTEXT_ENABLE_BASE +
+						i * CONTEXT_ENABLE_SIZE;
+
+					for (hwirq = 1; hwirq <= nr_irqs; hwirq++)
+						__plic_toggle(enable_base, hwirq, 0);
+				}
+				continue;
+			}
+
+			rc = riscv_get_intc_hartid(parent.fwnode, &hartid);
+			if (rc < 0) {
+				dev_warn(dev, "failed to get hart ID for context%d.\n", i);
+				continue;
+			}
+		} else {
+			rc = acpi_get_ext_intc_parent_hartid(plic->id, i, &hartid);
+			if (rc) {
+				dev_warn(dev, "invalid hartid for context%d\n", i);
+				continue;
+			}
+
+			rc = acpi_get_plic_context(plic->id, i, &context_id);
+			if (rc) {
+				dev_warn(dev, "invalid context id for context%d\n", i);
+				continue;
+			}
 		}
 
 		cpu = riscv_hartid_to_cpuid(hartid);
@@ -538,10 +579,10 @@ static int plic_probe(struct platform_device *pdev)
 		cpumask_set_cpu(cpu, &priv->lmask);
 		handler->present = true;
 		handler->hart_base = priv->regs + CONTEXT_BASE +
-			i * CONTEXT_SIZE;
+			context_id * CONTEXT_SIZE;
 		raw_spin_lock_init(&handler->enable_lock);
 		handler->enable_base = priv->regs + CONTEXT_ENABLE_BASE +
-			i * CONTEXT_ENABLE_SIZE;
+			context_id * CONTEXT_ENABLE_SIZE;
 		handler->priv = priv;
 
 		handler->enable_save =  devm_kcalloc(dev,
