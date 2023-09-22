@@ -55,6 +55,7 @@ static inline void enable_acpi(void)
  */
 #define APLIC_PLIC_ID(x) ((x) >> 24)
 #define IDC_CONTEXT_ID(x) ((x) & 0x0000ffff)
+#define MAX_APLICS 32
 
 /*
  * Since MADT must provide at least one RINTC structure, the
@@ -81,6 +82,8 @@ void __init acpi_rintc_info_init(void);
 int __init acpi_get_intc_index_hartid(u32 index, unsigned long *hartid);
 int acpi_get_ext_intc_parent_hartid(u8 id, u32 idx, unsigned long *hartid);
 int __init acpi_get_imsic_mmio_info(u32 index, struct resource *res);
+struct fwnode_handle *riscv_acpi_get_gsi_domain_id(u32 gsi);
+u32 riscv_acpi_gsi_to_irq(u32 gsi);
 #else
 static inline void acpi_init_rintc_map(void) { }
 static inline struct acpi_madt_rintc *acpi_cpu_get_madt_rintc(int cpu)
