@@ -6,11 +6,43 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/platform_device.h>
 #include <linux/irqchip/riscv-imsic.h>
 
 #include "../../../drivers/pci/pci.h"
+
+static int nr_aplics = 0;
+static struct
+{
+	struct fwnode_handle *fwnode;
+	u32 gsi_base;
+	u16 num_sources;
+} aplic_acpi_data[MAX_APLICS];
+
+struct fwnode_handle *riscv_acpi_get_gsi_domain_id(u32 gsi)
+{
+	int i;
+
+	if (nr_aplics) {
+		/* Find the APLIC that manages this GSI. */
+		for (i = 0; i < nr_aplics; i++) {
+			if (gsi >= aplic_acpi_data[i].gsi_base &&
+			    gsi < (aplic_acpi_data[i].gsi_base + aplic_acpi_data[i].num_sources))
+				return aplic_acpi_data[i].fwnode;
+		}
+	} else {
+		return riscv_get_intc_hwnode();
+	}
+
+	return NULL;
+}
+
+u32 riscv_acpi_gsi_to_irq(u32 gsi)
+{
+	return acpi_register_gsi(NULL, gsi, ACPI_LEVEL_SENSITIVE, ACPI_ACTIVE_HIGH);
+}
 
 void __init riscv_acpi_imsic_platform_init(void)
 {
@@ -43,6 +75,12 @@ static int __init aplic_parse_madt(union acpi_subtable_headers *header,
 	int ret;
 
 	fn = irq_domain_alloc_named_id_fwnode("RISCV-APLIC", aplic->id);
+
+	/* Cache APLIC info for GSI conversion */
+	aplic_acpi_data[nr_aplics].gsi_base = aplic->gsi_base;
+	aplic_acpi_data[nr_aplics].num_sources = aplic->num_sources;
+	aplic_acpi_data[nr_aplics].fwnode = fn;
+	nr_aplics++;
 
 	pdev = platform_device_alloc("riscv-aplic", aplic->id);
 	if (!pdev)

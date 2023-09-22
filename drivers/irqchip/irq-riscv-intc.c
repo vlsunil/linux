@@ -200,6 +200,7 @@ static int __init riscv_intc_acpi_init(union acpi_subtable_headers *header,
 {
 	struct fwnode_handle *fn;
 	struct acpi_madt_rintc *rintc;
+	int rc;
 
 	rintc = (struct acpi_madt_rintc *)header;
 
@@ -218,7 +219,13 @@ static int __init riscv_intc_acpi_init(union acpi_subtable_headers *header,
 		return -ENOMEM;
 	}
 
-	return riscv_intc_init_common(fn);
+	rc = riscv_intc_init_common(fn);
+	if (rc)
+		return rc;
+
+	acpi_set_irq_model(ACPI_IRQ_MODEL_RINTC, riscv_acpi_get_gsi_domain_id);
+	acpi_set_gsi_to_irq_fallback(riscv_acpi_gsi_to_irq);
+	return 0;
 }
 
 IRQCHIP_ACPI_DECLARE(riscv_intc, ACPI_MADT_TYPE_RINTC, NULL,
