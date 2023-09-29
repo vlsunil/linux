@@ -262,6 +262,37 @@ int acpi_get_ext_intc_parent_hartid(u8 id, u32 idx, unsigned long *hartid)
 	return -1;
 }
 
+void acpi_get_plic_nr_contexts(u8 id, int *nr_contexts)
+{
+	int i, j = 0;
+
+	for (i = 0; i < rintc_acpi_data.nr_rintc; i++) {
+		if (APLIC_PLIC_ID(rintc_acpi_data.rintc[i].ext_intc_id) == id) {
+			j++;
+		}
+	}
+
+	*nr_contexts = j;
+}
+
+int acpi_get_plic_context(u8 id, u32 idx, int *context_id)
+{
+	int i, j = 0;
+
+	for (i = 0; i < rintc_acpi_data.nr_rintc; i++) {
+		if (APLIC_PLIC_ID(rintc_acpi_data.rintc[i].ext_intc_id) == id) {
+			if (idx == j) {
+				*context_id = IDC_CONTEXT_ID(rintc_acpi_data.rintc[i].ext_intc_id);
+				return 0;
+			}
+
+			j++;
+		}
+	}
+
+	return -1;
+}
+
 int acpi_get_imsic_mmio_info(u32 index, struct resource *res)
 {
 	if (index >= rintc_acpi_data.nr_rintc)

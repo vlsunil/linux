@@ -82,6 +82,8 @@ int acpi_get_cbo_block_size(struct acpi_table_header *table, unsigned int cpu, u
 void __init acpi_rintc_info_init(void);
 int __init acpi_get_intc_index_hartid(u32 index, unsigned long *hartid);
 int acpi_get_ext_intc_parent_hartid(u8 id, u32 idx, unsigned long *hartid);
+void acpi_get_plic_nr_contexts(u8 id, int *nr_contexts);
+int acpi_get_plic_context(u8 id, u32 idx, int *context_id);
 int __init acpi_get_imsic_mmio_info(u32 index, struct resource *res);
 struct fwnode_handle *riscv_acpi_get_gsi_domain_id(u32 gsi);
 u32 riscv_acpi_gsi_to_irq(u32 gsi);
@@ -106,6 +108,16 @@ static inline int acpi_get_cbo_block_size(struct acpi_table_header *table,
 }
 
 static inline int __init acpi_get_intc_index_hartid(u32 index, unsigned long *hartid)
+{
+	return -EINVAL;
+}
+
+static inline void acpi_get_plic_nr_contexts(u8 id, int *nr_contexts)
+{
+	*nr_contexts = 0;
+}
+
+static inline int acpi_get_plic_context(u8 id, u32 idx, int *context_id)
 {
 	return -EINVAL;
 }
