@@ -2621,6 +2621,7 @@ void __init acpi_scan_init(void)
 	acpi_int340x_thermal_init();
 	acpi_init_lpit();
 
+pr_info("acpi_scan_init: calling acpi_scan_init\n");
 	acpi_scan_add_handler(&generic_device_handler);
 
 	/*

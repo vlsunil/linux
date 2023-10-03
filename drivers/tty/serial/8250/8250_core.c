@@ -1234,13 +1234,16 @@ static int __init serial8250_init(void)
 	serial8250_reg.nr = UART_NR;
 	ret = uart_register_driver(&serial8250_reg);
 #endif
+pr_info("serial8250_init: 1\n");
 	if (ret)
 		goto out;
 
+pr_info("serial8250_init: 2\n");
 	ret = serial8250_pnp_init();
 	if (ret)
 		goto unreg_uart_drv;
 
+pr_info("serial8250_init: 3\n");
 	serial8250_isa_devs = platform_device_alloc("serial8250",
 						    PLAT8250_DEV_LEGACY);
 	if (!serial8250_isa_devs) {
@@ -1248,16 +1251,19 @@ static int __init serial8250_init(void)
 		goto unreg_pnp;
 	}
 
+pr_info("serial8250_init: 4\n");
 	ret = platform_device_add(serial8250_isa_devs);
 	if (ret)
 		goto put_dev;
 
+pr_info("serial8250_init: 5\n");
 	serial8250_register_ports(&serial8250_reg, &serial8250_isa_devs->dev);
 
 	ret = platform_driver_register(&serial8250_isa_driver);
 	if (ret == 0)
 		goto out;
 
+pr_info("serial8250_init: 6\n");
 	platform_device_del(serial8250_isa_devs);
 put_dev:
 	platform_device_put(serial8250_isa_devs);

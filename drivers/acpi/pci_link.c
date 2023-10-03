@@ -124,6 +124,7 @@ static acpi_status acpi_pci_link_check_possible(struct acpi_resource *resource,
 			if (!p->interrupt_count) {
 				acpi_handle_debug(handle,
 						  "Blank _PRS EXT IRQ resource\n");
+pr_info("acpi_pci_link_check_possible: Blank _PRS EXT IRQ resource\n");
 				return AE_OK;
 			}
 			for (i = 0;
@@ -175,6 +176,7 @@ static acpi_status acpi_pci_link_check_current(struct acpi_resource *resource,
 {
 	int *irq = context;
 
+pr_info("acpi_pci_link_check_current: ENTER\n");
 	switch (resource->type) {
 	case ACPI_RESOURCE_TYPE_START_DEPENDENT:
 	case ACPI_RESOURCE_TYPE_END_TAG:
@@ -187,7 +189,7 @@ static acpi_status acpi_pci_link_check_current(struct acpi_resource *resource,
 				 * IRQ descriptors may have no IRQ# bits set,
 				 * particularly those w/ _STA disabled
 				 */
-				pr_debug("Blank _CRS IRQ resource\n");
+				pr_info("Blank _CRS IRQ resource\n");
 				return AE_OK;
 			}
 			*irq = p->interrupts[0];
@@ -202,7 +204,7 @@ static acpi_status acpi_pci_link_check_current(struct acpi_resource *resource,
 				 * extended IRQ descriptors must
 				 * return at least 1 IRQ
 				 */
-				pr_debug("Blank _CRS EXT IRQ resource\n");
+				pr_info("Blank _CRS EXT IRQ resource\n");
 				return AE_OK;
 			}
 			*irq = p->interrupts[0];
@@ -210,7 +212,7 @@ static acpi_status acpi_pci_link_check_current(struct acpi_resource *resource,
 		}
 		break;
 	default:
-		pr_debug("_CRS resource type 0x%x is not IRQ\n",
+		pr_info("_CRS resource type 0x%x is not IRQ\n",
 			 resource->type);
 		return AE_OK;
 	}
@@ -253,6 +255,7 @@ static int acpi_pci_link_get_current(struct acpi_pci_link *link)
 	 * Query and parse _CRS to get the current IRQ assignment.
 	 */
 
+pr_info("acpi_pci_link_get_current: Evaluating _CRS\n");
 	status = acpi_walk_resources(handle, METHOD_NAME__CRS,
 				     acpi_pci_link_check_current, &irq);
 	if (ACPI_FAILURE(status)) {
@@ -903,5 +906,6 @@ void __init acpi_pci_link_init(void)
 			acpi_irq_balance = 0;
 	}
 	register_syscore_ops(&irqrouter_syscore_ops);
+pr_info("acpi_pci_link_init: callingacpi_scan_add_handler\n");
 	acpi_scan_add_handler(&pci_link_handler);
 }

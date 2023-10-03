@@ -637,6 +637,7 @@ static int acpi_serdev_do_lookup(struct acpi_device *adev,
 	lookup->n = 0;
 
 	INIT_LIST_HEAD(&resource_list);
+pr_info("acpi_serdev_do_lookup: Calling acpi_dev_get_resources\n");
 	ret = acpi_dev_get_resources(adev, &resource_list,
 				     acpi_serdev_parse_resource, lookup);
 	acpi_dev_free_resource_list(&resource_list);

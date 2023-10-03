@@ -116,4 +116,6 @@
 
 #define APLIC_IDC_CLAIMI		0x1c
 
+struct fwnode_handle *aplic_get_fwnode(u32 gsi);
+
 #endif

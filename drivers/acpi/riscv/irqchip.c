@@ -10,18 +10,11 @@
 #include <linux/irqdomain.h>
 #include <linux/platform_device.h>
 #include <linux/irqchip/riscv-imsic.h>
+#include <linux/irqchip/riscv-aplic.h>
 
 #include "../../../drivers/pci/pci.h"
 
-static int nr_aplics = 0;
 static int nr_plics = 0;
-
-static struct
-{
-	struct fwnode_handle *fwnode;
-	u32 gsi_base;
-	u16 num_sources;
-} aplic_acpi_data[MAX_APLICS];
 
 static struct
 {
@@ -33,27 +26,21 @@ static struct
 struct fwnode_handle *riscv_acpi_get_gsi_domain_id(u32 gsi)
 {
 	int i;
+	struct fwnode_handle *fn;
 
-	if (nr_aplics) {
-		/* Find the APLIC that manages this GSI. */
-		for (i = 0; i < nr_aplics; i++) {
-			if (gsi >= aplic_acpi_data[i].gsi_base &&
-			    gsi < (aplic_acpi_data[i].gsi_base + aplic_acpi_data[i].num_sources))
-				return aplic_acpi_data[i].fwnode;
+	fn = aplic_get_fwnode(gsi);
+	if (fn)
+		return fn;
+
+	/* Find the PLIC that manages this GSI. */
+	for (i = 0; i < nr_plics; i++) {
+		if (gsi >= plic_acpi_data[i].gsi_base &&
+		    gsi <= (plic_acpi_data[i].gsi_base + plic_acpi_data[i].num_sources)) {
+			return plic_acpi_data[i].fwnode;
 		}
-	} else if (nr_plics) {
-		/* Find the PLIC that manages this GSI. */
-		for (i = 0; i < nr_plics; i++) {
-			if (gsi >= plic_acpi_data[i].gsi_base &&
-			    gsi <= (plic_acpi_data[i].gsi_base + plic_acpi_data[i].num_sources)) {
-				return plic_acpi_data[i].fwnode;
-			}
-		}
-	} else {
-		return riscv_get_intc_hwnode();
 	}
-
-	return NULL;
+pr_info("riscv_acpi_get_gsi_domain_id: returning INTC for GSI %d\n", gsi);
+	return riscv_get_intc_hwnode();
 }
 
 u32 riscv_acpi_gsi_to_irq(u32 gsi)
@@ -85,7 +72,14 @@ void __init riscv_acpi_imsic_platform_init(void)
 static int __init aplic_parse_madt(union acpi_subtable_headers *header,
 				   const unsigned long end)
 {
+#if 0
 	struct acpi_madt_aplic *aplic = (struct acpi_madt_aplic *)header;
+	/* Cache APLIC info for GSI conversion */
+	aplic_acpi_data[nr_aplics].gsi_base = aplic->gsi_base;
+	aplic_acpi_data[nr_aplics].num_sources = aplic->num_sources;
+	aplic_acpi_data[nr_aplics].fwnode = fn;
+	nr_aplics++;
+
 	struct platform_device *pdev;
 	struct fwnode_handle *fn;
 	struct resource *res;
@@ -135,6 +129,7 @@ static int __init aplic_parse_madt(union acpi_subtable_headers *header,
 		return ret;
 	}
 
+#endif
 	return 0;
 }
 

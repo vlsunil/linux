@@ -16,6 +16,35 @@
 
 #include "irq-riscv-aplic-main.h"
 
+static int nr_aplics = 0;
+
+static struct
+{
+	struct fwnode_handle *fwnode;
+	u32 gsi_base;
+	u16 num_sources;
+} aplic_acpi_data[MAX_APLICS];
+
+struct fwnode_handle *aplic_get_fwnode(u32 gsi)
+{
+	int i;
+
+pr_info("aplic_get_fwnode: ENTER for gsi=%d: nr_aplics=%d\n", gsi, nr_aplics);
+	if (nr_aplics) {
+		/* Find the APLIC that manages this GSI. */
+		for (i = 0; i < nr_aplics; i++) {
+			if (gsi >= aplic_acpi_data[i].gsi_base &&
+			    gsi < (aplic_acpi_data[i].gsi_base + aplic_acpi_data[i].num_sources)) {
+pr_info("aplic_get_fwnode: Found APLIC %d: gsi_base = %d\n", i, aplic_acpi_data[i].gsi_base);
+				return aplic_acpi_data[i].fwnode;
+			}
+		}
+	}
+
+pr_info("aplic_get_fwnode: Returning NULL!\n");
+	return NULL;
+}
+
 void aplic_irq_unmask(struct irq_data *d)
 {
 	struct aplic_priv *priv = irq_data_get_irq_chip_data(d);
@@ -139,8 +168,10 @@ static void aplic_init_hw_irqs(struct aplic_priv *priv)
 int aplic_setup_priv(struct aplic_priv *priv, struct device *dev,
 		     void __iomem *regs)
 {
+	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
 	struct of_phandle_args parent;
 	struct acpi_madt_aplic *aplic;
+	union acpi_object *obj;
 	int rc;
 
 	/* Save device pointer and register base */
@@ -169,19 +200,44 @@ int aplic_setup_priv(struct aplic_priv *priv, struct device *dev,
 				priv->nr_idcs++;
 		}
 	} else {
-		aplic = *(struct acpi_madt_aplic **)dev_get_platdata(dev);
+		if (ACPI_FAILURE(acpi_evaluate_object(ACPI_HANDLE(dev), "_MAT", NULL, &buffer)))
+			return -1;
+
+		if (!buffer.length || !buffer.pointer)
+			return -1;
+
+		obj = buffer.pointer;
+		if (obj->type != ACPI_TYPE_BUFFER ||
+		    obj->buffer.length < sizeof(struct acpi_subtable_header))
+			return -1;
+
+		aplic = (struct acpi_madt_aplic *)obj->buffer.pointer;
 		if (!aplic) {
 			dev_err(dev, "APLIC platform data is NULL!\n");
 			return -1;
 		}
+pr_info("aplic_setup_priv: aplic->gsi_base = %d\n", aplic->gsi_base);
+pr_info("aplic_setup_priv: aplic->num_sources = %d\n", aplic->num_sources);
+pr_info("aplic_setup_priv: aplic->num_idcs = %d\n", aplic->num_idcs);
+pr_info("aplic_setup_priv: aplic->id = %d\n", aplic->id);
 		priv->gsi_base = aplic->gsi_base;
+pr_info("aplic_setup_priv: 1\n");
 		priv->nr_irqs = aplic->num_sources;
+pr_info("aplic_setup_priv: 2\n");
 		priv->nr_idcs = aplic->num_idcs;
+pr_info("aplic_setup_priv: 3\n");
 		priv->id = aplic->id;
-	}
+pr_info("aplic_setup_priv: 4\n");
+		aplic_acpi_data[nr_aplics].gsi_base = aplic->gsi_base;
+		aplic_acpi_data[nr_aplics].num_sources = aplic->num_sources;
+		aplic_acpi_data[nr_aplics].fwnode = dev->fwnode;
+		nr_aplics++;
 
+	}
+pr_info("aplic_setup_priv: calling aplic_init_hw_irqs\n");
 	/* Setup initial state APLIC interrupts */
 	aplic_init_hw_irqs(priv);
+pr_info("aplic_setup_priv: DONE\n");
 
 	return 0;
 }
@@ -194,6 +250,7 @@ static int aplic_probe(struct platform_device *pdev)
 	void __iomem *regs;
 	int rc;
 
+pr_info("aplic_probe: ENTER\n");
 	/* Map the MMIO registers */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
@@ -229,6 +286,15 @@ static int aplic_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_ACPI
+static const struct acpi_device_id aplic_acpi_match[] = {
+	{ "RSCV0001", 0 },
+	{}
+};
+MODULE_DEVICE_TABLE(acpi, aplic_acpi_match);
+
+#endif
+
 static const struct of_device_id aplic_match[] = {
 	{ .compatible = "riscv,aplic" },
 	{}
@@ -238,10 +304,17 @@ static struct platform_driver aplic_driver = {
 	.driver = {
 		.name		= "riscv-aplic",
 		.of_match_table	= aplic_match,
+		.acpi_match_table = ACPI_PTR(aplic_acpi_match),
 	},
 	.probe = aplic_probe,
 };
 
+module_platform_driver(aplic_driver);
+
+MODULE_AUTHOR("Anup Patel <apatel@ventanamicro.com>");
+
+#if 0
+builtin_platform_driver(aplic_driver);
 static int __init aplic_init(void)
 {
 	/*
@@ -251,3 +324,4 @@ static int __init aplic_init(void)
 	return platform_driver_register(&aplic_driver);
 }
 core_initcall(aplic_init);
+#endif

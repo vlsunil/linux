@@ -622,6 +622,7 @@ static void acpi_dev_get_irqresource(struct resource *res, u32 gsi,
 	}
 
 	res->flags = acpi_dev_irq_flags(triggering, polarity, shareable, wake_capable);
+pr_info("acpi_dev_get_irqresource: calling acpi_register_gsi for gsi=%d\n", gsi);
 	irq = acpi_register_gsi(NULL, gsi, triggering, polarity);
 	if (irq >= 0) {
 		res->start = irq;
@@ -653,7 +654,10 @@ static void acpi_dev_get_irqresource(struct resource *res, u32 gsi,
 bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 				 struct resource *res)
 {
+//	acpi_status status;
+//	acpi_handle handle;
 	struct acpi_resource_irq *irq;
+//	struct fwnode_handle *fwnode;
 	struct acpi_resource_extended_irq *ext_irq;
 
 	switch (ares->type) {
@@ -678,13 +682,16 @@ bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 			irqresource_disabled(res, 0);
 			return false;
 		}
-		if (is_gsi(ext_irq))
+
+		if (is_gsi(ext_irq)) {
+pr_info("acpi_dev_resource_interrupt: Calling acpi_dev_get_irqresource for ext_irq=%d\n", ext_irq->interrupts[index]);
 			acpi_dev_get_irqresource(res, ext_irq->interrupts[index],
-					 ext_irq->triggering, ext_irq->polarity,
-					 ext_irq->shareable, ext_irq->wake_capable,
-					 false);
-		else
-			irqresource_disabled(res, 0);
+						 ext_irq->triggering, ext_irq->polarity,
+						 ext_irq->shareable, ext_irq->wake_capable,
+						 false);
+		} else {
+			irqresource_disabled(res, ext_irq->interrupts[index]);
+		}
 		break;
 	default:
 		res->flags = 0;
@@ -758,14 +765,17 @@ static acpi_status acpi_dev_process_resource(struct acpi_resource *ares,
 	    || acpi_dev_resource_ext_address_space(ares, &win))
 		return acpi_dev_new_resource_entry(&win, c);
 
+pr_info("acpi_dev_process_resource: 1\n");
 	for (i = 0; acpi_dev_resource_interrupt(ares, i, res); i++) {
 		acpi_status status;
 
+pr_info("acpi_dev_process_resource: 2\n");
 		status = acpi_dev_new_resource_entry(&win, c);
 		if (ACPI_FAILURE(status))
 			return status;
 	}
 
+pr_info("acpi_dev_process_resource: 3\n");
 	return AE_OK;
 }
 
@@ -948,6 +958,7 @@ static int acpi_dev_consumes_res(struct acpi_device *adev, struct resource *res)
 	int ret, found = 0;
 
 	INIT_LIST_HEAD(&resource_list);
+pr_info("acpi_dev_consumes_res: calling acpi_dev_get_resources\n");
 	ret = acpi_dev_get_resources(adev, &resource_list, NULL, NULL);
 	if (ret < 0)
 		return 0;

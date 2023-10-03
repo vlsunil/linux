@@ -616,12 +616,14 @@ acpi_walk_resources(acpi_handle device_handle,
 	status = acpi_rs_get_method_data(device_handle, name, &buffer);
 	if (ACPI_FAILURE(status)) {
 		return_ACPI_STATUS(status);
+pr_info("acpi_walk_resources: 1\n");
 	}
 
 	/* Walk the resource list and cleanup */
 
 	status = acpi_walk_resource_buffer(&buffer, user_function, context);
 	ACPI_FREE(buffer.pointer);
+pr_info("acpi_walk_resources: 2\n");
 	return_ACPI_STATUS(status);
 }
 

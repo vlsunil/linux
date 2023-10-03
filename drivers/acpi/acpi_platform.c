@@ -138,6 +138,7 @@ struct platform_device *acpi_create_platform_device(struct acpi_device *adev,
 	}
 
 	INIT_LIST_HEAD(&resource_list);
+pr_info("acpi_create_platform_device: Calling acpi_dev_get_resources\n");
 	count = acpi_dev_get_resources(adev, &resource_list, NULL, NULL);
 	if (count < 0)
 		return NULL;
@@ -180,7 +181,7 @@ struct platform_device *acpi_create_platform_device(struct acpi_device *adev,
 			PTR_ERR(pdev));
 	else {
 		set_dev_node(&pdev->dev, acpi_get_node(adev->handle));
-		dev_dbg(&adev->dev, "created platform device %s\n",
+		dev_err(&adev->dev, "created platform device %s\n",
 			dev_name(&pdev->dev));
 	}
 

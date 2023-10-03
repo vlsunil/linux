@@ -488,8 +488,11 @@ struct resource *pnp_get_resource(struct pnp_dev *dev,
 
 	list_for_each_entry(pnp_res, &dev->resources, list) {
 		res = &pnp_res->res;
-		if (pnp_resource_type(res) == type && num-- == 0)
+pr_info("pnp_get_resource: pnp_resource_type(res)=0x%lx: in_type=0x%lx\n", pnp_resource_type(res), type);
+		if (pnp_resource_type(res) == type && num-- == 0) {
+pr_info("pnp_get_resource: FOUND match num=%d\n", num);
 			return res;
+		}
 	}
 	return NULL;
 }
@@ -520,7 +523,8 @@ struct pnp_resource *pnp_add_resource(struct pnp_dev *dev,
 
 	pnp_res->res = *res;
 	pnp_res->res.name = dev->name;
-	dev_dbg(&dev->dev, "%pR\n", res);
+pr_info("pnp_add_resource: res->start=0x%lx\n", res->start);
+	dev_info(&dev->dev, "%pR\n", res);
 	return pnp_res;
 }
 

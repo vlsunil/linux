@@ -42,7 +42,7 @@ static int __init ispnpidacpi(const char *id)
 
 static int pnpacpi_get_resources(struct pnp_dev *dev)
 {
-	pnp_dbg(&dev->dev, "get resources\n");
+	pr_info("pnpacpi_get_resources: get resources\n");
 	return pnpacpi_parse_allocated_resource(dev);
 }
 
@@ -225,6 +225,7 @@ static int __init pnpacpi_add_device(struct acpi_device *device)
 		return 0;
 
 	pnpid = pnpacpi_get_id(device);
+pr_info("pnpacpi_add_device: pnpid = %s\n", pnpid);
 	if (!pnpid)
 		return 0;
 
@@ -257,8 +258,11 @@ static int __init pnpacpi_add_device(struct acpi_device *device)
 	/* Handle possible string truncation */
 	dev->name[sizeof(dev->name) - 1] = '\0';
 
+pr_info("pnpacpi_add_device: dev->name=%s\n", dev->name);
 	if (dev->active)
 		pnpacpi_parse_allocated_resource(dev);
+
+pr_info("pnpacpi_add_device: 1\n");
 
 	if (dev->capabilities & PNP_CONFIGURABLE)
 		pnpacpi_parse_resource_option_data(dev);

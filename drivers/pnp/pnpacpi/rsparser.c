@@ -103,7 +103,9 @@ static void pnpacpi_add_irqresource(struct pnp_dev *dev, struct resource *r)
 	if (!(r->flags & IORESOURCE_DISABLED))
 		pcibios_penalize_isa_irq(r->start, 1);
 
+pr_info("pnpacpi_add_irqresource: 1\n");
 	pnp_add_resource(dev, r);
+pr_info("pnpacpi_add_irqresource: 2\n");
 }
 
 /*
@@ -178,11 +180,15 @@ static acpi_status pnpacpi_allocated_resource(struct acpi_resource *res,
 		return AE_OK;
 	}
 
+pr_info("pnpacpi_allocated_resource: 1\n");
 	r->flags = 0;
 	if (acpi_dev_resource_interrupt(res, 0, r)) {
+pr_info("pnpacpi_allocated_resource: 2\n");
 		pnpacpi_add_irqresource(dev, r);
-		for (i = 1; acpi_dev_resource_interrupt(res, i, r); i++)
+		for (i = 1; acpi_dev_resource_interrupt(res, i, r); i++) {
+pr_info("pnpacpi_allocated_resource: 3\n");
 			pnpacpi_add_irqresource(dev, r);
+		}
 
 		if (i > 1) {
 			/*
@@ -196,8 +202,10 @@ static acpi_status pnpacpi_allocated_resource(struct acpi_resource *res,
 				dev->capabilities &= ~PNP_WRITE;
 			}
 		}
+pr_info("pnpacpi_allocated_resource: 4\n");
 		return AE_OK;
 	} else if (acpi_gpio_get_irq_resource(res, &gpio)) {
+pr_info("pnpacpi_allocated_resource: 5\n");
 		/*
 		 * If the resource is GpioInt() type then extract the IRQ
 		 * from GPIO resource and fill it into IRQ resource type.

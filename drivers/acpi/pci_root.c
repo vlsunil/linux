@@ -903,6 +903,8 @@ int acpi_pci_probe_root_resources(struct acpi_pci_root_info *info)
 	unsigned long flags;
 
 	flags = IORESOURCE_IO | IORESOURCE_MEM | IORESOURCE_MEM_8AND16BIT;
+pr_info("acpi_pci_probe_root_resources: calling acpi_dev_get_resources\n");
+
 	ret = acpi_dev_get_resources(device, list,
 				     acpi_dev_filter_resource_type_cb,
 				     (void *)flags);

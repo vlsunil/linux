@@ -1611,6 +1611,7 @@ pci_acpi_setup_ecam_mapping(struct acpi_pci_root *root)
 		return NULL;
 	}
 
+pr_info("pci_acpi_setup_ecam_mapping: Calling acpi_resource_consumer\n");
 	adev = acpi_resource_consumer(&cfgres);
 	if (adev)
 		dev_info(dev, "ECAM area %pR reserved by %s\n", &cfgres,
@@ -1619,6 +1620,7 @@ pci_acpi_setup_ecam_mapping(struct acpi_pci_root *root)
 		dev_warn(dev, FW_BUG "ECAM area %pR not reserved in ACPI namespace\n",
 			 &cfgres);
 
+pr_info("pci_acpi_setup_ecam_mapping: Done with acpi_resource_consumer\n");
 	cfg = pci_ecam_create(dev, &cfgres, bus_res, ecam_ops);
 	if (IS_ERR(cfg)) {
 		dev_err(dev, "%04x:%pR error %ld mapping ECAM\n", seg, bus_res,

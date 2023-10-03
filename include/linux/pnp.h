@@ -9,6 +9,7 @@
 #ifndef _LINUX_PNP_H
 #define _LINUX_PNP_H
 
+#include <linux/acpi.h>
 #include <linux/device.h>
 #include <linux/list.h>
 #include <linux/errno.h>
@@ -150,9 +151,16 @@ static inline resource_size_t pnp_mem_len(struct pnp_dev *dev,
 static inline resource_size_t pnp_irq(struct pnp_dev *dev, unsigned int bar)
 {
 	struct resource *res = pnp_get_resource(dev, IORESOURCE_IRQ, bar);
+	int irq;
 
-	if (pnp_resource_valid(res))
+	if (pnp_resource_valid(res)) {
+pr_info("pnp_irq: FOUND IRQ = %d\n", res->start);
+		if (acpi_gsi_to_irq(res->start, &irq))
+			irq = res->start;
+
+		res->start = irq;
 		return res->start;
+	}
 	return -1;
 }
 

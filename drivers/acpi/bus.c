@@ -330,6 +330,9 @@ static void acpi_bus_osc_negotiate_platform_control(void)
 #ifdef CONFIG_X86
 	capbuf[OSC_SUPPORT_DWORD] |= OSC_SB_GENERIC_INITIATOR_SUPPORT;
 #endif
+#ifdef CONFIG_RISCV
+	capbuf[OSC_SUPPORT_DWORD] |= OSC_SB_GENERIC_INITIATOR_SUPPORT;
+#endif
 
 #ifdef CONFIG_ACPI_CPPC_LIB
 	capbuf[OSC_SUPPORT_DWORD] |= OSC_SB_CPC_SUPPORT;
@@ -1412,9 +1415,9 @@ static int __init acpi_init(void)
 	}
 	acpi_init_ffh();
 
+	acpi_riscv_init();
 	pci_mmcfg_late_init();
 	acpi_arm_init();
-	acpi_riscv_init();
 	acpi_viot_early_init();
 	acpi_hest_init();
 	acpi_ghes_init();

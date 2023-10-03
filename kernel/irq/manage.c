@@ -2151,6 +2151,7 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 	struct irq_desc *desc;
 	int retval;
 
+pr_info("request_threaded_irq: ENTER for irq=%d\n", irq);
 	if (irq == IRQ_NOTCONNECTED)
 		return -ENOTCONN;
 
