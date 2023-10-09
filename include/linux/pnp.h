@@ -26,6 +26,7 @@ struct pnp_dev;
 #ifdef CONFIG_PNP
 struct resource *pnp_get_resource(struct pnp_dev *dev, unsigned long type,
 				unsigned int num);
+
 #else
 static inline struct resource *pnp_get_resource(struct pnp_dev *dev,
 			unsigned long type, unsigned int num)
@@ -146,13 +147,22 @@ static inline resource_size_t pnp_mem_len(struct pnp_dev *dev,
 	return 0;
 }
 
+#ifdef CONFIG_PNPACPI
+void pnpacpi_reconfigure_irq(struct pnp_dev *dev, unsigned int index, struct resource *res);
+#endif
 
-static inline resource_size_t pnp_irq(struct pnp_dev *dev, unsigned int bar)
+static inline int pnp_irq(struct pnp_dev *dev, unsigned int bar)
 {
 	struct resource *res = pnp_get_resource(dev, IORESOURCE_IRQ, bar);
 
-	if (pnp_resource_valid(res))
+	if (pnp_resource_valid(res)) {
+#ifdef CONFIG_PNPACPI
+		if (!pnp_resource_enabled(res))
+			pnpacpi_reconfigure_irq(dev, bar, res);
+#endif
 		return res->start;
+	}
+
 	return -1;
 }
 
