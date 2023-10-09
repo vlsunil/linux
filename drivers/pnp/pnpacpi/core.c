@@ -326,3 +326,10 @@ static int __init pnpacpi_setup(char *str)
 }
 
 __setup("pnpacpi=", pnpacpi_setup);
+
+void pnpacpi_reconfigure_irq(struct pnp_dev *dev, unsigned int index, struct resource *res)
+{
+	if (has_acpi_companion(&dev->dev))
+		acpi_irq_get(ACPI_HANDLE(&dev->dev), index, res);
+}
+EXPORT_SYMBOL(pnpacpi_reconfigure_irq);
