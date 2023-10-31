@@ -1388,23 +1388,6 @@ static void riscv_iommu_get_resv_regions(struct device *dev, struct list_head *h
  * Domain management
  */
 
-/*
- * TODO: move to local (private) allocators for VMID / PSCID
- *  allocate GSCID unique PSCID
- */
-static ioasid_t iommu_sva_alloc_pscid(void)
-{
-	/* TODO: Provide anonymous pasid value */
-	struct mm_struct mm = {
-		.pasid = IOMMU_PASID_INVALID,
-	};
-
-	if (iommu_sva_alloc_pasid(&mm, 1, (1 << 20) - 1))
-		return IOMMU_PASID_INVALID;
-
-	return mm.pasid;
-}
-
 static struct iommu_domain *riscv_iommu_domain_alloc(unsigned type)
 {
 	struct riscv_iommu_domain *domain;
@@ -1462,7 +1445,8 @@ static void riscv_iommu_domain_free(struct iommu_domain *iommu_domain)
 	kfree(domain);
 }
 
-static int riscv_iommu_domain_finalize(struct riscv_iommu_domain *domain,
+static int riscv_iommu_domain_finalize(struct device *dev,
+				       struct riscv_iommu_domain *domain,
 				       struct riscv_iommu_device *iommu)
 {
 	struct iommu_domain_geometry *geometry;
@@ -1505,7 +1489,7 @@ static int riscv_iommu_domain_finalize(struct riscv_iommu_domain *domain,
 	 * max allowed identifier widths (16, 20 bit per spec).
 	 * Optional set 1:1 mapping for GSCID:VMID and PSCID:PASID.
 	 */
-	domain->id = iommu_sva_alloc_pscid();
+	domain->id = iommu_alloc_global_pasid(dev);
 
 	/* TODO: Fix this for RV32 */
 	domain->mode = satp_mode >> 60;
@@ -1546,7 +1530,7 @@ static int riscv_iommu_attach_dev(struct iommu_domain *iommu_domain, struct devi
 	mutex_lock(&ep->lock);
 
 	/* allocate root pages, initialize io-pgtable ops, etc. */
-	ret = riscv_iommu_domain_finalize(domain, ep->iommu);
+	ret = riscv_iommu_domain_finalize(dev, domain, ep->iommu);
 	if (ret < 0) {
 		dev_err(dev, "can not finalize domain: %d\n", ret);
 		mutex_unlock(&ep->lock);
