@@ -563,7 +563,7 @@ static bool riscv_iommu_iofence_sync(struct riscv_iommu_device *iommu)
 	return riscv_iommu_post_sync(iommu, &cmd, true);
 }
 
-static void riscv_iommu_mm_invalidate(struct mmu_notifier *mn,
+static void riscv_iommu_mm_arch_invalidate_secondary_tlbs(struct mmu_notifier *mn,
 				      struct mm_struct *mm, unsigned long start,
 				      unsigned long end)
 {
@@ -617,7 +617,7 @@ static void riscv_iommu_mm_release(struct mmu_notifier *mn, struct mm_struct *mm
 
 static const struct mmu_notifier_ops riscv_iommu_mmuops = {
 	.release = riscv_iommu_mm_release,
-	.invalidate_range = riscv_iommu_mm_invalidate,
+	.arch_invalidate_secondary_tlbs = riscv_iommu_mm_arch_invalidate_secondary_tlbs,
 };
 
 /* Command queue primary interrupt handler */
