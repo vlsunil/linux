@@ -10,6 +10,8 @@
 #include <linux/pci_regs.h>
 #include <linux/iommu.h>
 #include <linux/io.h>
+#include <linux/eventfd.h>
+#include <linux/file.h>
 
 static int sva_disabled = false;
 module_param(sva_disabled, int, 0644);
@@ -20,6 +22,8 @@ struct qemu_edu_device {
 	bool sva_enabled;
 	struct mutex lock;
 	refcount_t ref;
+	unsigned int irq;
+	struct eventfd_ctx *eventfd;
 };
 
 struct qemu_edu_ctx {
@@ -27,6 +31,23 @@ struct qemu_edu_ctx {
 	struct iommu_sva *sva;
 	unsigned int pasid;
 };
+
+static irqreturn_t irq_handler(int irq, void *data)
+{
+	struct qemu_edu_device *edu_dev = (struct qemu_edu_device *)data;
+        u32 irq_status;
+
+	irq_status = ioread32(edu_dev->reg + 0x24);
+	if (irq_status) {
+		/* Must do this ACK, or else the interrupts just keeps firing. */
+		iowrite32(irq_status, edu_dev->reg + 0x64);
+		if (edu_dev->eventfd)
+			eventfd_signal(edu_dev->eventfd);
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
+}
 
 static int qemu_edu_open(struct inode *inode, struct file *fp)
 {
@@ -89,6 +110,9 @@ static ssize_t qemu_edu_write(struct file *fp, const char __user *buf, size_t co
 	u64 cmd = 0x01;
 	u64 cnt = count;
 
+	/* enable irq on dma completion */
+	cmd |= 0x04;
+
 	/* page crossing not supported */
 	if ((offset_in_page(buf) + cnt) > 4096)
 		return -EINVAL;
@@ -116,9 +140,12 @@ static ssize_t qemu_edu_write(struct file *fp, const char __user *buf, size_t co
 	writeq(cnt, dev->reg + 0x90);
 	writeq(cmd, dev->reg + 0x98);
 
-	do {
-		cpu_relax();
-	} while (readq(dev->reg + 0x98) & 1);
+	if (!dev->eventfd) {
+		do {
+			cpu_relax();
+		} while (readq(dev->reg + 0x98) & 1);
+	}
+
 	mutex_unlock(&dev->lock);
 
 	if (!ctx->sva) {
@@ -140,6 +167,9 @@ static ssize_t qemu_edu_read(struct file *fp, char __user *buf, size_t count, lo
 	u64 dst = (u64)buf;	// from device to user buffer
 	u64 cmd = 0x03;
 	u64 cnt = count;
+
+	/* enable irq on dma completion */
+	cmd |= 0x04;
 
 	/* page crossing not supported */
 	if ((offset_in_page(buf) + cnt) > 4096)
@@ -167,9 +197,13 @@ static ssize_t qemu_edu_read(struct file *fp, char __user *buf, size_t count, lo
 	writeq(dst, dev->reg + 0x88);
 	writeq(cnt, dev->reg + 0x90);
 	writeq(cmd, dev->reg + 0x98);
-	do {
-		cpu_relax();
-	} while (readq(dev->reg + 0x98) & 1);
+
+	if (!dev->eventfd) {
+		do {
+			cpu_relax();
+		} while (readq(dev->reg + 0x98) & 1);
+	}
+
 	mutex_unlock(&dev->lock);
 
 	if (!ctx->sva) {
@@ -180,12 +214,44 @@ static ssize_t qemu_edu_read(struct file *fp, char __user *buf, size_t count, lo
 	return 0;
 }
 
+static long qemu_edu_ioctl(struct file *fp, unsigned int ioctl, unsigned long arg)
+{
+	struct qemu_edu_ctx *ctx = fp->private_data;
+	struct qemu_edu_device *dev = ctx->dev;
+	unsigned int status = 0xaf;
+
+	switch (ioctl) {
+	case 0:
+		irq_set_affinity(dev->irq, &current->cpus_mask);
+		mutex_lock(&dev->lock);
+		writel(status, dev->reg + 0x60);
+		mutex_unlock(&dev->lock);
+		break;
+	case 1:
+	{
+		struct eventfd_ctx *eventfd;
+		struct fd f;
+
+		f = fdget(arg);
+		if (!f.file)
+			return -EBADF;
+		eventfd = eventfd_ctx_fileget(f.file);
+		if (IS_ERR(eventfd))
+			return PTR_ERR(eventfd);
+		dev->eventfd = eventfd;
+		break;
+	}
+	}
+	return 0;
+}
+
 static const struct file_operations qemu_edu_fops = {
 	.owner		= THIS_MODULE,
 	.open		= qemu_edu_open,
 	.release	= qemu_edu_release,
 	.read		= qemu_edu_read,
 	.write		= qemu_edu_write,
+	.unlocked_ioctl = qemu_edu_ioctl,
 };
 
 static int qemu_edu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -226,17 +292,40 @@ static int qemu_edu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		edu_dev->sva_enabled = true;
 	}
 
+	ret = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSI);
+	if (ret < 0) {
+		dev_err(dev, "unable to allocate irq vectors\n");
+		goto fail_irq_alloc;
+	}
+
+	ret = -ENODEV;
+	edu_dev->irq = msi_get_virq(dev, 0);
+	if (!edu_dev->irq) {
+		dev_err(dev, "no MSI vector 0\n");
+		goto fail;
+	}
+
+	dev_info(dev, "IRQ: %d\n", edu_dev->irq);
+
+	ret = request_irq(edu_dev->irq, irq_handler, IRQF_SHARED, "qemu-edu-irq", edu_dev);
+	if (ret) {
+		dev_err(dev, "request_irq\n");
+		goto fail;
+	}
+
 	pci_set_master(pdev);
 	pci_set_drvdata(pdev, edu_dev);
 
 	ret = misc_register(&edu_dev->miscdev);
-	if (ret < 0) {
-		iounmap(edu_dev->reg);
-		kfree(edu_dev);
-		return ret;
-	}
+	if (!ret)
+		return 0;
 
-	return 0;
+fail:
+	pci_free_irq_vectors(pdev);
+fail_irq_alloc:
+	iounmap(edu_dev->reg);
+	kfree(edu_dev);
+	return ret;
 }
 
 static void qemu_edu_remove(struct pci_dev *pdev)
@@ -245,6 +334,8 @@ static void qemu_edu_remove(struct pci_dev *pdev)
 
 	iommu_dev_disable_feature(edu_dev->miscdev.parent, IOMMU_DEV_FEAT_SVA);
 	misc_deregister(&edu_dev->miscdev);
+	free_irq(edu_dev->irq, edu_dev);
+	pci_free_irq_vectors(pdev);
 	iounmap(edu_dev->reg);
 	kfree(edu_dev);
 	pci_set_drvdata(pdev, NULL);
