@@ -1322,6 +1322,7 @@ static void riscv_iommu_detach_endpoint(struct riscv_iommu_endpoint *ep)
 {
 	mutex_lock(&ep->lock);
 	ep->domain = NULL;
+	ep->irq_domain = NULL; /* TODO: don't leak this */
 	list_del(&ep->domains);
 	mutex_unlock(&ep->lock);
 
@@ -1515,6 +1516,24 @@ static u64 riscv_iommu_domain_atp(struct riscv_iommu_domain *domain)
 	return atp;
 }
 
+static int riscv_iommu_irq_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
+{
+	return -ENXIO;
+}
+
+static struct irq_chip riscv_iommu_irq_chip = {
+	.name			= "IOMMU-IR",
+	.irq_mask		= irq_chip_mask_parent,
+	.irq_unmask		= irq_chip_unmask_parent,
+	.irq_set_vcpu_affinity	= riscv_iommu_irq_set_vcpu_affinity,
+};
+
+static struct msi_domain_info riscv_iommu_irq_domain_info = {
+	.flags	= MSI_FLAG_USE_DEF_DOM_OPS | MSI_FLAG_USE_DEF_CHIP_OPS |
+		  MSI_FLAG_PCI_MSIX | MSI_FLAG_MULTI_PCI_MSI,
+	.chip	= &riscv_iommu_irq_chip,
+};
+
 static int riscv_iommu_attach_dev(struct iommu_domain *iommu_domain, struct device *dev)
 {
 	struct riscv_iommu_domain *domain = iommu_domain_to_riscv(iommu_domain);
@@ -1581,6 +1600,27 @@ static int riscv_iommu_attach_dev(struct iommu_domain *iommu_domain, struct devi
 	ep->domain = domain;
 
 	list_add_tail(&ep->domains, &domain->endpoints);
+
+	if (iommu_domain->type == IOMMU_DOMAIN_UNMANAGED && dev_is_pci(dev)) {
+		struct fwnode_handle *fn;
+
+		WARN_ON(ep->irq_domain);
+
+		fn = irq_domain_alloc_named_fwnode("IOMMU-IR");
+		if (!fn)
+			dev_err(dev, "Couldn't allocate fwnode\n");
+
+		ep->irq_domain = pci_msi_create_irq_domain(fn,
+							   &riscv_iommu_irq_domain_info,
+							   dev_get_msi_domain(dev));
+		if (ep->irq_domain) {
+			ep->irq_domain->dev = dev;
+			dev_set_msi_domain(dev, ep->irq_domain);
+		} else {
+			dev_err(dev, "Failed to create IOMMU irq domain\n");
+		}
+	}
+
 	mutex_unlock(&ep->lock);
 	mutex_unlock(&domain->lock);
 	riscv_iommu_iodir_inv_devid(ep->iommu, ep->devid);
