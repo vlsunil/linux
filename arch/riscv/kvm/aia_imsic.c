@@ -16,6 +16,7 @@
 #include <linux/swab.h>
 #include <kvm/iodev.h>
 #include <asm/csr.h>
+#include <asm/irq.h>
 
 #define IMSIC_MAX_EIX	(IMSIC_MAX_ID / BITS_PER_TYPE(u64))
 
@@ -731,7 +732,82 @@ void kvm_riscv_vcpu_aia_imsic_release(struct kvm_vcpu *vcpu)
 int kvm_arch_update_irqfd_routing(struct kvm *kvm, unsigned int host_irq,
 				  uint32_t guest_irq, bool set)
 {
-	return -ENXIO;
+	struct irq_data *irqdata = irq_get_irq_data(host_irq);
+	struct kvm_irq_routing_table *irq_rt;
+	struct kvm_vcpu *vcpu;
+	unsigned long tmp, flags;
+	int idx, ret = -ENXIO;
+
+	idx = srcu_read_lock(&kvm->irq_srcu);
+	irq_rt = srcu_dereference(kvm->irq_routing, &kvm->irq_srcu);
+	if (guest_irq >= irq_rt->nr_rt_entries ||
+	    hlist_empty(&irq_rt->map[guest_irq])) {
+		pr_warn_once("no route for guest_irq %u/%u (broken user space?)\n",
+			     guest_irq, irq_rt->nr_rt_entries);
+		goto out;
+	}
+
+	kvm_for_each_vcpu(tmp, vcpu, kvm) {
+		gpa_t ippn = vcpu->arch.aia_context.imsic_addr >> IMSIC_MMIO_PAGE_SHIFT;
+		struct kvm_kernel_irq_routing_entry *e;
+
+		hlist_for_each_entry(e, &irq_rt->map[guest_irq], link) {
+			struct msi_msg msg[2] = {
+			{
+				.address_hi = e->msi.address_hi,
+				.address_lo = e->msi.address_lo,
+				.data = e->msi.data,
+			},
+			};
+			struct riscv_iommu_vcpu_info vcpu_info = {0};
+			struct imsic *imsic;
+			gpa_t target, tppn;
+
+			if (e->type != KVM_IRQ_ROUTING_MSI)
+				continue;
+
+			target = ((gpa_t)e->msi.address_hi << 32) | e->msi.address_lo;
+			tppn = target >> IMSIC_MMIO_PAGE_SHIFT;
+
+			WARN_ON(target & (IMSIC_MMIO_PAGE_SZ - 1));
+			WARN_ON(tppn & (BIT(kvm->arch.aia.nr_guest_bits) - 1));
+
+			if (ippn != tppn)
+				continue;
+
+			if (!set) {
+				ret = irq_set_vcpu_affinity(host_irq, NULL);
+				WARN_ON(ret);
+				continue;
+			}
+
+			vcpu_info.msi_addr_pattern = kvm->arch.aia.msi_addr_pattern;
+			vcpu_info.msi_addr_mask = kvm->arch.aia.msi_addr_mask;
+			vcpu_info.gpa = target;
+
+			imsic = vcpu->arch.aia_context.imsic_state;
+
+			read_lock_irqsave(&imsic->vsfile_lock, flags);
+
+			if (imsic->vsfile_cpu >= 0) {
+				vcpu_info.hpa = imsic->vsfile_pa;
+			} else {
+				WARN_ON(1);
+			}
+
+			ret = irq_set_vcpu_affinity(host_irq, &vcpu_info);
+			WARN_ON(ret);
+
+			irq_data_get_irq_chip(irqdata)->irq_write_msi_msg(irqdata, msg);
+
+			read_unlock_irqrestore(&imsic->vsfile_lock, flags);
+		}
+	}
+
+	ret = 0;
+out:
+	srcu_read_unlock(&kvm->irq_srcu, idx);
+	return ret;
 }
 
 int kvm_riscv_vcpu_aia_imsic_update(struct kvm_vcpu *vcpu)
