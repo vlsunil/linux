@@ -136,6 +136,7 @@ struct riscv_iommu_endpoint {
 	struct riscv_iommu_domain *domain;	/* -> attached domain, only one at a time, nesting via domain->domain */
 	struct riscv_iommu_msi_pte *msi_root;	/* -> interrupt re-mapping */
 	struct irq_domain *irq_domain;
+	bool irqbypass_enabled;
 
 	struct riscv_iommu_dc *dc;		/* -> device context pointer, can be tracked by iommu->dc(devid) */
 	struct riscv_iommu_pc *pc;		/* -> process context root, can be tracked by iommu->dc(devid)->pc(pasid) */

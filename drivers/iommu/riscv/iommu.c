@@ -33,6 +33,7 @@
 
 #include <asm/csr.h>
 #include <asm/delay.h>
+#include <asm/irq.h>
 
 MODULE_DESCRIPTION("IOMMU driver for RISC-V architected Ziommu implementations");
 MODULE_AUTHOR("Tomasz Jeznach <tjeznach@rivosinc.com>");
@@ -1516,9 +1517,106 @@ static u64 riscv_iommu_domain_atp(struct riscv_iommu_domain *domain)
 	return atp;
 }
 
+static void riscv_iommu_update_msi_region(struct riscv_iommu_endpoint *ep,
+					  phys_addr_t start, size_t length)
+{
+	struct iommu_resv_region *entry, *next, *new = NULL;
+
+	WARN_ON(length > 256 * PAGE_SIZE);
+
+	list_for_each_entry_safe(entry, next,  &ep->regions, list) {
+		if (entry->type == IOMMU_RESV_SW_MSI) {
+			list_del(&entry->list);
+			if (length && !new)
+				new = entry;
+			else
+				kfree(entry);
+		}
+	}
+
+	if (length) {
+		new->start = start;
+		new->length = length;
+		new->prot = 0;
+		new->type = IOMMU_RESV_SW_MSI;
+		list_add_tail(&new->list, &ep->regions);
+	}
+}
+
 static int riscv_iommu_irq_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
 {
-	return -ENXIO;
+	struct riscv_iommu_vcpu_info *info = (struct riscv_iommu_vcpu_info *)vcpu_info;
+	struct riscv_iommu_endpoint *ep;
+	struct device *dev;
+	u64 index;
+
+	if (!info && !data->domain)
+		return 0;
+
+	if (info && WARN_ON(!data->domain))
+		return -ENXIO;
+
+	dev = get_device(data->domain->dev);
+	ep = dev_iommu_priv_get(dev);
+
+	//FIXME: Need to manage regions without the mutex
+	//mutex_lock(&ep->lock);
+
+	WARN_ON(!info && !ep->irqbypass_enabled);
+
+	if (!info) {
+		memset(ep->msi_root, 0, 256 * sizeof(struct riscv_iommu_msi_pte));
+		riscv_iommu_update_msi_region(ep, 0, 0);
+		ep->dc->msi_addr_pattern = 0ULL;
+		ep->dc->msi_addr_mask = 0ULL;
+		wmb();
+		/*
+		 * TODO: Invalidate all MSI entries
+		 * IOTINVAL.GVMA with GV=1, AV=0, and GSCID=DC.iohgatp.GSCID
+		 */
+		ep->irqbypass_enabled = false;
+		goto out;
+	}
+
+	//TODO: Implement extract(), see 8.4 of the AIA spec
+
+	WARN_ON(info->msi_addr_mask > 255);
+
+	if (!ep->irqbypass_enabled) {
+		memset(ep->msi_root, 0, 256 * sizeof(struct riscv_iommu_msi_pte));
+		riscv_iommu_update_msi_region(ep, info->msi_addr_pattern << 12, (info->msi_addr_mask + 1) * PAGE_SIZE);
+		ep->dc->msi_addr_mask = cpu_to_le64(info->msi_addr_mask);
+		ep->dc->msi_addr_pattern = cpu_to_le64(info->msi_addr_pattern);
+		wmb();
+		/*
+		 * TODO: Invalidate all MSI entries
+		 * IOTINVAL.GVMA with GV=1, AV=0, and GSCID=DC.iohgatp.GSCID
+		 */
+		ep->irqbypass_enabled = true;
+	} else {
+		WARN_ON(ep->dc->msi_addr_pattern != info->msi_addr_pattern || ep->dc->msi_addr_mask != info->msi_addr_mask);
+	}
+
+	index = (info->gpa >> 12) & ep->dc->msi_addr_mask;
+
+	if (!info->mrif) {
+		ep->msi_root[index].pte = RISCV_IOMMU_MSI_PTE_V |
+			FIELD_PREP(RISCV_IOMMU_MSI_PTE_M, 3) |
+			phys_to_ppn(info->hpa);
+	} else {
+		WARN_ON(1);
+	}
+
+	/*
+	 * TODO: Invalidate one MSI entry for info->gpa
+	 * IOTINVAL.GVMA with GV=AV=1, ADDR[63:12]=A[63:12] and GSCID=DC.iohgatp.GSCID
+	 */
+
+out:
+	//FIXME: Need to manage regions without the mutex
+	//mutex_unlock(&ep->lock);
+	put_device(dev);
+	return 0;
 }
 
 static struct irq_chip riscv_iommu_irq_chip = {
