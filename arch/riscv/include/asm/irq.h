@@ -62,4 +62,19 @@ static inline int __init acpi_get_imsic_mmio_info(u32 index, struct resource *re
 }
 #endif
 
+struct riscv_iommu_mrif {
+	struct list_head list;
+	u64 gpa;
+	int (*mrif_cb)(void *mrif_data);
+	void *mrif_data;
+};
+
+struct riscv_iommu_vcpu_info {
+	u64 msi_addr_pattern;
+	u64 msi_addr_mask;
+	u64 gpa;
+	u64 hpa;
+	struct riscv_iommu_mrif *mrif;
+};
+
 #endif /* _ASM_RISCV_IRQ_H */
