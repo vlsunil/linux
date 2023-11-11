@@ -42,6 +42,10 @@ struct kvm_aia {
 	/* Number of guest bits in IMSIC address */
 	u32		nr_guest_bits;
 
+	/* IOMMU MSI address pattern and mask */
+	u64		msi_addr_pattern;
+	u64		msi_addr_mask;
+
 	/* Guest physical address of APLIC */
 	gpa_t		aplic_addr;
 

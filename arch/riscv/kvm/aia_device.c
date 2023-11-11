@@ -205,6 +205,14 @@ static int aia_imsic_addr(struct kvm *kvm, u64 *addr,
 
 		if (*addr & (KVM_DEV_RISCV_IMSIC_ALIGN - 1))
 			return -EINVAL;
+
+		if (kvm->arch.aia.msi_addr_pattern < (*addr >> 12))
+			kvm->arch.aia.msi_addr_pattern = *addr >> 12;
+
+		/*
+		 * TODO: Extend UAPI to allow msi_addr_mask to be user selected?
+		 */
+		kvm->arch.aia.msi_addr_mask = ((u64)1 << (fls(atomic_read(&kvm->online_vcpus)) - 1)) - 1;
 	}
 
 	mutex_lock(&vcpu->mutex);
