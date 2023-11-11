@@ -1284,7 +1284,7 @@ static struct iommu_device *riscv_iommu_probe_device(struct device *dev)
 
 	mutex_init(&ep->lock);
 	INIT_LIST_HEAD(&ep->regions);
-	INIT_LIST_HEAD(&ep->regions);
+	INIT_LIST_HEAD(&ep->domains);
 
 	if (dev_is_pci(dev)) {
 		ep->devid = pci_dev_id(to_pci_dev(dev));
