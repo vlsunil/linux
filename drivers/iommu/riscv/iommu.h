@@ -53,7 +53,8 @@ enum riscv_default_virqs {
 	RISCV_IOMMU_INTR_CQ = 0,
 	RISCV_IOMMU_INTR_FQ = 1,
 	RISCV_IOMMU_INTR_PM = 2,
-	RISCV_IOMMU_INTR_PQ = 3
+	RISCV_IOMMU_INTR_PQ = 3,
+	RISCV_IOMMU_INTR_MRIF = 4,
 };
 
 struct riscv_iommu_device {
@@ -69,6 +70,9 @@ struct riscv_iommu_device {
 	int irq_fltq;
 	int irq_pm;
 	int irq_priq;
+
+	/* IRQ for MRIF notifications */
+	int irq_mrif;
 
 	/* Queue lengths */
 	int cmdq_len;
@@ -137,6 +141,7 @@ struct riscv_iommu_endpoint {
 	struct riscv_iommu_msi_pte *msi_root;	/* -> interrupt re-mapping */
 	struct irq_domain *irq_domain;
 	bool irqbypass_enabled;
+	struct list_head mrifs;
 
 	struct riscv_iommu_dc *dc;		/* -> device context pointer, can be tracked by iommu->dc(devid) */
 	struct riscv_iommu_pc *pc;		/* -> process context root, can be tracked by iommu->dc(devid)->pc(pasid) */

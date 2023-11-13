@@ -1286,6 +1286,7 @@ static struct iommu_device *riscv_iommu_probe_device(struct device *dev)
 	mutex_init(&ep->lock);
 	INIT_LIST_HEAD(&ep->regions);
 	INIT_LIST_HEAD(&ep->domains);
+	INIT_LIST_HEAD(&ep->mrifs);
 
 	if (dev_is_pci(dev)) {
 		ep->devid = pci_dev_id(to_pci_dev(dev));
@@ -1583,6 +1584,10 @@ static int riscv_iommu_irq_set_vcpu_affinity(struct irq_data *data, void *vcpu_i
 	WARN_ON(info->msi_addr_mask > 255);
 
 	if (!ep->irqbypass_enabled) {
+		struct riscv_iommu_mrif *mrif, *next;
+
+		list_for_each_entry_safe(mrif, next,  &ep->mrifs, list)
+			list_del(&mrif->list);
 		memset(ep->msi_root, 0, 256 * sizeof(struct riscv_iommu_msi_pte));
 		riscv_iommu_update_msi_region(ep, info->msi_addr_pattern << 12, (info->msi_addr_mask + 1) * PAGE_SIZE);
 		ep->dc->msi_addr_mask = cpu_to_le64(info->msi_addr_mask);
@@ -1600,11 +1605,39 @@ static int riscv_iommu_irq_set_vcpu_affinity(struct irq_data *data, void *vcpu_i
 	index = (info->gpa >> 12) & ep->dc->msi_addr_mask;
 
 	if (!info->mrif) {
+		struct riscv_iommu_mrif *mrif, *next;
+
+		list_for_each_entry_safe(mrif, next,  &ep->mrifs, list)
+			if (mrif->gpa == info->gpa)
+				list_del(&mrif->list);
+
 		ep->msi_root[index].pte = RISCV_IOMMU_MSI_PTE_V |
 			FIELD_PREP(RISCV_IOMMU_MSI_PTE_M, 3) |
 			phys_to_ppn(info->hpa);
 	} else {
-		WARN_ON(1);
+		struct msi_desc *desc = irq_get_msi_desc(ep->iommu->irq_mrif);
+		struct msi_msg *msg = &desc->msg;
+		u32 msi_data = msg->data;
+		u64 target = ((u64)msg->address_hi << 32) | msg->address_lo;
+		struct riscv_iommu_mrif *mrif;
+		bool had_mrif = false;
+
+		list_for_each_entry(mrif, &ep->mrifs, list) {
+			if (mrif == info->mrif) {
+				had_mrif = true;
+				break;
+			}
+		}
+		if (!had_mrif)
+			list_add(&info->mrif->list, &ep->mrifs);
+
+		ep->msi_root[index].pte = RISCV_IOMMU_MSI_PTE_V |
+			FIELD_PREP(RISCV_IOMMU_MSI_PTE_M, 1) |
+			FIELD_PREP(RISCV_IOMMU_MSI_PTE_MRIF_ADDR, info->hpa >> 9);
+		ep->msi_root[index].mrif_info =
+			FIELD_PREP(RISCV_IOMMU_MSI_MRIF_NID_MSB, (msi_data >> 10) & 1) |
+			FIELD_PREP(RISCV_IOMMU_MSI_MRIF_NID, msi_data & ((1 << 10) - 1)) |
+			phys_to_ppn(target);
 	}
 
 	/*
@@ -2161,6 +2194,32 @@ void riscv_iommu_remove(struct riscv_iommu_device *iommu)
 	iopf_queue_free(iommu->pq_work);
 }
 
+static irqreturn_t riscv_iommu_mrif_irq_check(int irq, void *data)
+{
+	return IRQ_WAKE_THREAD;
+}
+
+static irqreturn_t riscv_iommu_mrif_irq_process(int irq, void *data)
+{
+	struct riscv_iommu_device *iommu = (struct riscv_iommu_device *)data;
+	struct riscv_iommu_endpoint *ep, *next;
+	struct riscv_iommu_mrif *mrif;
+	int ret;
+
+	rbtree_postorder_for_each_entry_safe(ep, next, &iommu->eps, node) {
+		mutex_lock(&ep->lock);
+
+		list_for_each_entry(mrif, &ep->mrifs, list) {
+			ret = mrif->mrif_cb(mrif->mrif_data);
+			WARN_ON(ret);
+		}
+
+		mutex_unlock(&ep->lock);
+	}
+
+	return IRQ_HANDLED;
+}
+
 int riscv_iommu_init(struct riscv_iommu_device *iommu)
 {
 	struct device *dev = iommu->dev;
@@ -2225,6 +2284,13 @@ int riscv_iommu_init(struct riscv_iommu_device *iommu)
 		goto fail;
 
  no_ats:
+	if (request_threaded_irq(iommu->irq_mrif, riscv_iommu_mrif_irq_check,
+				 riscv_iommu_mrif_irq_process, IRQF_ONESHOT | IRQF_SHARED,
+				 dev_name(dev), iommu)) {
+		dev_err(dev, "fail to request irq %d for mrif notifications\n", iommu->irq_mrif);
+		goto fail;
+	}
+
 	if (iommu_default_passthrough()) {
 		dev_info(dev, "iommu set to passthrough mode\n");
 		ret = riscv_iommu_enable(iommu, RISCV_IOMMU_DDTP_MODE_BARE);

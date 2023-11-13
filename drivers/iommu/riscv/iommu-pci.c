@@ -86,7 +86,7 @@ static int riscv_iommu_pci_probe(struct pci_dev *pdev, const struct pci_device_i
 	pci_set_master(pdev);
 
 	/* Allocate and assign IRQ vectors for the various events */
-	ret = pci_alloc_irq_vectors(pdev, 1, RISCV_IOMMU_INTR_COUNT, PCI_IRQ_MSIX);
+	ret = pci_alloc_irq_vectors(pdev, 1, RISCV_IOMMU_INTR_COUNT + 1, PCI_IRQ_MSIX);
 	if (ret < 0) {
 		dev_err(dev, "unable to allocate irq vectors\n");
 		goto fail;
@@ -123,6 +123,16 @@ static int riscv_iommu_pci_probe(struct pci_dev *pdev, const struct pci_device_i
 		if (!iommu->irq_priq) {
 			dev_warn(dev,
 				 "no MSI vector %d for page-request queue\n",
+				 RISCV_IOMMU_INTR_PQ);
+			goto fail;
+		}
+	}
+
+	if (iommu->cap & RISCV_IOMMU_CAP_MSI_MRIF) {
+		iommu->irq_mrif = msi_get_virq(dev, RISCV_IOMMU_INTR_MRIF);
+		if (!iommu->irq_mrif) {
+			dev_warn(dev,
+				 "no MSI vector %d for mrif notifications\n",
 				 RISCV_IOMMU_INTR_PQ);
 			goto fail;
 		}
