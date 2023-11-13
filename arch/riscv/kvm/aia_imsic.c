@@ -57,6 +57,7 @@ struct imsic {
 	struct imsic_mrif *swfile;
 	phys_addr_t swfile_pa;
 	spinlock_t swfile_extirq_lock;
+	struct riscv_iommu_mrif mrif;
 };
 
 #define imsic_vs_csr_read(__c)			\
@@ -729,6 +730,14 @@ void kvm_riscv_vcpu_aia_imsic_release(struct kvm_vcpu *vcpu)
 		kvm_irq_routing_update(vcpu->kvm);
 }
 
+static int kvm_riscv_vcpu_aia_imsic_mrif_cb(void *data)
+{
+	struct kvm_vcpu *vcpu = (struct kvm_vcpu *)data;
+
+	imsic_swfile_extirq_update(vcpu);
+	return 0;
+}
+
 int kvm_arch_update_irqfd_routing(struct kvm *kvm, unsigned int host_irq,
 				  uint32_t guest_irq, bool set)
 {
@@ -792,7 +801,11 @@ int kvm_arch_update_irqfd_routing(struct kvm *kvm, unsigned int host_irq,
 			if (imsic->vsfile_cpu >= 0) {
 				vcpu_info.hpa = imsic->vsfile_pa;
 			} else {
-				WARN_ON(1);
+				vcpu_info.hpa = imsic->swfile_pa;
+				imsic->mrif.gpa = vcpu_info.gpa;
+				imsic->mrif.mrif_cb = kvm_riscv_vcpu_aia_imsic_mrif_cb;
+				imsic->mrif.mrif_data = vcpu;
+				vcpu_info.mrif = &imsic->mrif;
 			}
 
 			ret = irq_set_vcpu_affinity(host_irq, &vcpu_info);
