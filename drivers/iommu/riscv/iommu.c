@@ -1765,7 +1765,7 @@ static void riscv_iommu_iotlb_sync(struct iommu_domain *iommu_domain,
 				      &gather->pgsize);
 }
 
-static void riscv_iommu_iotlb_sync_map(struct iommu_domain *iommu_domain,
+static int riscv_iommu_iotlb_sync_map(struct iommu_domain *iommu_domain,
 				       unsigned long iova, size_t size)
 {
 	unsigned long end = iova + size - 1;
@@ -1776,6 +1776,7 @@ static void riscv_iommu_iotlb_sync_map(struct iommu_domain *iommu_domain,
 	 */
 	size_t pgsize = PAGE_SIZE;
 	riscv_iommu_flush_iotlb_range(iommu_domain, &iova, &end, &pgsize);
+	return 0;
 }
 
 static int riscv_iommu_map_pages(struct iommu_domain *iommu_domain,
