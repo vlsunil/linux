@@ -33,6 +33,7 @@ enum sbi_ext_id {
 	SBI_EXT_PMU = 0x504D55,
 	SBI_EXT_DBCN = 0x4442434E,
 	SBI_EXT_STA = 0x535441,
+	SBI_EXT_CPPC = 0x43505043,
 
 	/* Experimentals extensions must lie within this range */
 	SBI_EXT_EXPERIMENTAL_START = 0x08000000,
@@ -268,6 +269,20 @@ struct sbi_sta_struct {
 
 #define SBI_STA_SHMEM_DISABLE		-1
 
+/* CPPC interfaces defined in SBI spec */
+#define SBI_CPPC_PROBE			0x0
+#define SBI_CPPC_READ			0x1
+#define SBI_CPPC_READ_HI		0x2
+#define SBI_CPPC_WRITE			0x3
+
+/* RISC-V FFH definitions from RISC-V FFH spec */
+#define FFH_CPPC_TYPE(r)		(((r) & GENMASK_ULL(63, 60)) >> 60)
+#define FFH_CPPC_SBI_REG(r)		((r) & GENMASK(31, 0))
+#define FFH_CPPC_CSR_NUM(r)		((r) & GENMASK(11, 0))
+
+#define FFH_CPPC_SBI			0x1
+#define FFH_CPPC_CSR			0x2
+
 /* SBI spec version fields */
 #define SBI_SPEC_VERSION_DEFAULT	0x1
 #define SBI_SPEC_VERSION_MAJOR_SHIFT	24
@@ -364,6 +379,16 @@ int sbi_err_map_linux_errno(int err);
 extern bool sbi_debug_console_available;
 int sbi_debug_console_write(const char *bytes, unsigned int num_bytes);
 int sbi_debug_console_read(char *bytes, unsigned int num_bytes);
+
+/* CPPC support */
+struct sbi_cppc_data {
+	u64 val;
+	u32 reg;
+	struct sbiret ret;
+};
+
+void sbi_cppc_read(void *read_data);
+void sbi_cppc_write(void *write_data);
 
 #else /* CONFIG_RISCV_SBI */
 static inline int sbi_remote_fence_i(const struct cpumask *cpu_mask) { return -1; }
