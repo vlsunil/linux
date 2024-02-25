@@ -22,7 +22,7 @@
 #define APLIC_PLIC_ID(x) ((x) >> 24)
 #define IDC_CONTEXT_ID(x) ((x) & 0x0000ffff)
 
-struct fwnode_handle *ext_entc_get_gsi_domain_id(u32 gsi);
+struct fwnode_handle *find_aplic(u32 gsi);
 int __init acpi_get_intc_index_hartid(u32 index, unsigned long *hartid);
 int acpi_get_ext_intc_parent_hartid(u8 id, u32 idx, unsigned long *hartid);
 void acpi_get_plic_nr_contexts(u8 id, int *nr_contexts);
@@ -30,7 +30,7 @@ int acpi_get_plic_context(u8 id, u32 idx, int *context_id);
 int __init acpi_get_imsic_mmio_info(u32 index, struct resource *res);
 
 #else
-static inline struct fwnode_handle *ext_entc_get_gsi_domain_id(u32 gsi)
+static inline struct fwnode_handle *find_aplic(u32 gsi)
 {
 	return NULL;
 }

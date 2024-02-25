@@ -272,6 +272,15 @@ int acpi_get_imsic_mmio_info(u32 index, struct resource *res)
 	return 0;
 }
 
+static struct fwnode_handle *ext_entc_get_gsi_domain_id(u32 gsi)
+{
+	struct fwnode_handle *domain_handle = NULL;
+
+	domain_handle = find_aplic(gsi);
+
+	return domain_handle;
+}
+
 static int __init riscv_intc_acpi_init(union acpi_subtable_headers *header,
 				       const unsigned long end)
 {
