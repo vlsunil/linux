@@ -128,10 +128,84 @@ static void aplic_init_hw_irqs(struct aplic_priv *priv)
 	writel(0, priv->regs + APLIC_DOMAINCFG);
 }
 
+#ifdef CONFIG_ACPI
+
+static struct aplic_priv *acpi_aplic_priv[32];
+static u32 num_aplic;
+
+struct fwnode_handle *find_aplic(u32 gsi)
+{
+	int i;
+
+	/* Find the APLIC that manages this GSI. */
+	for (i = 0; i < 32; i++) {
+		struct aplic_priv *priv = acpi_aplic_priv[i];
+
+		if (!priv)
+			return NULL;
+
+		if (gsi >= priv->gsi_base && gsi < (priv->gsi_base + priv->nr_irqs))
+			return priv->dev->fwnode;
+	}
+
+	return NULL;
+}
+
+static int get_aplic_info(struct acpi_subtable_header *entry, u32 gsi_base,
+			 u32 *nr_irqs, u32 *nr_idcs, u32 *aplic_id)
+{
+	struct acpi_madt_aplic *aplic = (struct acpi_madt_aplic *)entry;
+
+	if (aplic->gsi_base != gsi_base)
+		return 0;
+
+	*nr_irqs = aplic->num_sources;
+	*nr_idcs = aplic->num_idcs;
+	*aplic_id = aplic->id;
+	return 1;
+}
+
+static int parse_madt_aplic_entry(u32 gsi_base, u32 *nr_irqs, u32 *nr_idcs)
+{
+	struct acpi_subtable_header *hdr;
+	unsigned long madt_end, entry;
+	struct acpi_table_madt *madt;
+	int aplic_id = -1;
+
+	if (ACPI_FAILURE(acpi_get_table(ACPI_SIG_MADT, 0,
+				(struct acpi_table_header **)&madt)))
+		return aplic_id;
+
+	entry = (unsigned long)madt;
+	madt_end = entry + madt->header.length;
+
+	/* Parse all entries looking for a match. */
+	entry += sizeof(struct acpi_table_madt);
+	while (entry + sizeof(struct acpi_subtable_header) < madt_end) {
+		hdr = (struct acpi_subtable_header *)entry;
+		if (hdr->type == ACPI_MADT_TYPE_APLIC &&
+		    get_aplic_info(hdr, gsi_base, nr_irqs, nr_idcs, &aplic_id))
+			break;
+		else
+			entry += hdr->length;
+	}
+
+	acpi_put_table((struct acpi_table_header *)madt);
+
+	return aplic_id;
+}
+
+static const struct acpi_device_id aplic_acpi_match[] = {
+	{ "RSCV0001", 0 },
+	{}
+};
+MODULE_DEVICE_TABLE(acpi, aplic_acpi_match);
+
+#endif
+
 int aplic_setup_priv(struct aplic_priv *priv, struct device *dev, void __iomem *regs)
 {
 	struct of_phandle_args parent;
-	struct acpi_madt_aplic *aplic;
 	int rc;
 
 	/* Save device pointer and register base */
@@ -158,17 +232,33 @@ int aplic_setup_priv(struct aplic_priv *priv, struct device *dev, void __iomem *
 				priv->nr_idcs++;
 		}
 	} else {
-		aplic = *(struct acpi_madt_aplic **)dev_get_platdata(dev);
-		if (!aplic) {
-			dev_err(dev, "APLIC platform data is NULL!\n");
+		u64 gsi_base;
+		u32 id, nr_irqs, nr_idcs;
+		acpi_status status;
+
+		if (!acpi_has_method(ACPI_HANDLE(dev), "_GSB"))
+			return -1;
+
+		status = acpi_evaluate_integer(ACPI_HANDLE(dev), "_GSB", NULL, &gsi_base);
+		if (ACPI_FAILURE(status)) {
+			acpi_handle_err(ACPI_HANDLE(dev), "failed to evaluate _GSB method\n");
+				return -1;
+		}
+
+		id = parse_madt_aplic_entry((u32)gsi_base, &nr_irqs, &nr_idcs);
+		if (id < 0) {
+			dev_err(dev, "failed to find APLIC in MADT\n");
 			return -1;
 		}
-		priv->gsi_base = aplic->gsi_base;
-		priv->nr_irqs = aplic->num_sources;
-		priv->nr_idcs = aplic->num_idcs;
-		priv->id = aplic->id;
+		priv->gsi_base = (u32)gsi_base;
+		priv->nr_irqs = nr_irqs;
+		priv->nr_idcs = nr_idcs;
+		priv->id = id;
 	}
 
+#ifdef CONFIG_ACPI
+	acpi_aplic_priv[num_aplic++] = priv;
+#endif
 	/* Setup initial state APLIC interrupts */
 	aplic_init_hw_irqs(priv);
 
@@ -182,6 +272,7 @@ static int aplic_probe(struct platform_device *pdev)
 	void __iomem *regs;
 	int rc;
 
+pr_info("aplic_probe: ENTER\n");
 	/* Map the MMIO registers */
 	regs = devm_platform_ioremap_resource(pdev, 0);
 	if (!regs) {
@@ -217,6 +308,7 @@ static struct platform_driver aplic_driver = {
 	.driver = {
 		.name		= "riscv-aplic",
 		.of_match_table	= aplic_match,
+		.acpi_match_table = ACPI_PTR(aplic_acpi_match),
 	},
 	.probe = aplic_probe,
 };
