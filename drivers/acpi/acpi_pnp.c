@@ -388,13 +388,21 @@ static int is_cmos_rtc_device(struct acpi_device *adev)
 	return !acpi_match_device_ids(adev, ids);
 }
 
+bool check_pnp_device(const char *id)
+{
+	return acpi_pnp_match(id, NULL);
+}
+EXPORT_SYMBOL_GPL(check_pnp_device);
+
 bool acpi_is_pnp_device(struct acpi_device *adev)
 {
+pr_info("acpi_is_pnp_device: handler = 0x%llx, acpi_pnp_handler=0x%llx\n", adev->handler, &acpi_pnp_handler);
 	return adev->handler == &acpi_pnp_handler || is_cmos_rtc_device(adev);
 }
 EXPORT_SYMBOL_GPL(acpi_is_pnp_device);
 
 void __init acpi_pnp_init(void)
 {
+pr_info("acpi_pnp_init: ENTER\n");
 	acpi_scan_add_handler(&acpi_pnp_handler);
 }

@@ -383,6 +383,7 @@ extern int ec_transaction(u8 command,
 extern acpi_handle ec_get_handle(void);
 
 extern bool acpi_is_pnp_device(struct acpi_device *);
+extern bool check_pnp_device(const char *);
 
 #if defined(CONFIG_ACPI_WMI) || defined(CONFIG_ACPI_WMI_MODULE)
 

@@ -283,6 +283,21 @@ static int __init pnpacpi_add_device(struct acpi_device *device)
 	return 0;
 }
 
+int acpi_pnp_reconfigure(struct acpi_device *adev)
+{
+	const char *pnpid;
+
+pr_info("acpi_pnp_reconfigure: ENTER\n");
+	pnpid = pnpacpi_get_id(adev);
+	if (pnpid && check_pnp_device(pnpid)) {
+pr_info("acpi_pnp_reconfigure: 1\n");
+		pnpacpi_add_device(adev);
+	}
+
+pr_info("acpi_pnp_reconfigure: 2\n");
+	return AE_OK;
+}
+
 static acpi_status __init pnpacpi_add_device_handler(acpi_handle handle,
 						     u32 lvl, void *context,
 						     void **rv)
@@ -291,8 +306,16 @@ static acpi_status __init pnpacpi_add_device_handler(acpi_handle handle,
 
 	if (!device)
 		return AE_CTRL_DEPTH;
-	if (acpi_is_pnp_device(device))
-		pnpacpi_add_device(device);
+
+	if (acpi_is_pnp_device(device)) {
+		if (!acpi_dev_ready_for_enumeration(device)) {
+pr_info("pnpacpi_add_device_handler: PNP device has DEP\n");
+			return AE_OK;
+		} else {
+			pnpacpi_add_device(device);
+		}
+	}
+
 	return AE_OK;
 }
 
