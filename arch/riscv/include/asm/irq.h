@@ -34,11 +34,6 @@ int __init acpi_get_imsic_mmio_info(u32 index, struct resource *res);
 int acpi_imsic_probe(struct fwnode_handle *parent);
 
 #else
-static inline struct fwnode_handle *ext_entc_get_gsi_domain_id(u32 gsi)
-{
-	return NULL;
-}
-
 static inline int __init acpi_get_intc_index_hartid(u32 index, unsigned long *hartid)
 {
 	return -EINVAL;
