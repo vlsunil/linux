@@ -296,6 +296,11 @@ pr_info("aplic_probe: ENTER\n");
 	if (rc)
 		dev_err(dev, "failed to setup APLIC in %s mode\n", msi_mode ? "MSI" : "direct");
 
+#ifdef CONFIG_ACPI
+	/* Re-enumerate devices depending on PMIC */
+	acpi_dev_clear_dependencies(ACPI_COMPANION(&pdev->dev));
+#endif
+
 	return rc;
 }
 
