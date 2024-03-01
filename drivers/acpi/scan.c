@@ -19,6 +19,7 @@
 #include <linux/dma-map-ops.h>
 #include <linux/platform_data/x86/apple.h>
 #include <linux/pgtable.h>
+#include <linux/pnp.h>
 #include <linux/crc32.h>
 #include <linux/dma-direct.h>
 
@@ -798,6 +799,8 @@ static const char * const acpi_honor_dep_ids[] = {
 	"INTC1059", /* IVSC (TGL) driver must be loaded to allow i2c access to camera sensors */
 	"INTC1095", /* IVSC (ADL) driver must be loaded to allow i2c access to camera sensors */
 	"INTC100A", /* IVSC (RPL) driver must be loaded to allow i2c access to camera sensors */
+	"RSCV0001", /* RISC-V APLIC */
+	"RSCV0002", /* RISC-V PLIC */
 	NULL
 };
 
@@ -2306,6 +2309,7 @@ static void acpi_scan_clear_dep_fn(struct work_struct *work)
 	acpi_bus_attach(cdw->adev, (void *)true);
 	acpi_scan_lock_release();
 
+	acpi_pnp_reconfigure(cdw->adev);
 	acpi_dev_put(cdw->adev);
 	kfree(cdw);
 }

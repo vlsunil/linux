@@ -347,6 +347,8 @@ static inline struct acpi_device *pnp_acpi_device(struct pnp_dev *dev)
 		return dev->data;
 	return NULL;
 }
+
+void acpi_pnp_reconfigure(struct acpi_device *adev);
 #else
 #define pnp_acpi_device(dev) 0
 #endif
