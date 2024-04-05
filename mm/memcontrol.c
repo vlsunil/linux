@@ -864,8 +864,12 @@ void __mod_memcg_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 				pr_warn("stat item index: %d\n", idx);
 			break;
 		default:
+#ifdef CONFIG_DEBUG_VM_IRQSOFF
 			if (VM_WARN_ON_IRQS_ENABLED())
 				pr_warn("stat item index: %d\n", idx);
+#else
+			;
+#endif
 		}
 	}
 
