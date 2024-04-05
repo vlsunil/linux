@@ -363,6 +363,9 @@ struct xe_device {
 	/** @ufence_wq: user fence wait queue */
 	wait_queue_head_t ufence_wq;
 
+	/** @preempt_fence_wq: used to serialize preempt fences */
+	struct workqueue_struct *preempt_fence_wq;
+
 	/** @ordered_wq: used to serialize compute mode resume */
 	struct workqueue_struct *ordered_wq;
 
@@ -498,10 +501,7 @@ struct xe_device {
 	struct mutex sb_lock;
 
 	/* Should be in struct intel_display */
-	u32 skl_preferred_vco_freq, max_dotclk_freq, hti_state;
-	u8 snps_phy_failed_calibration;
-	struct drm_atomic_state *modeset_restore_state;
-	struct list_head global_obj_list;
+	u32 skl_preferred_vco_freq, max_dotclk_freq;
 
 	union {
 		/* only to allow build, not used functionally */
