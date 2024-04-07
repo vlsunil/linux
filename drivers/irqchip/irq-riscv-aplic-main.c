@@ -4,8 +4,10 @@
  * Copyright (C) 2022 Ventana Micro Systems Inc.
  */
 
+#include <linux/acpi.h>
 #include <linux/bitfield.h>
 #include <linux/irqchip/riscv-aplic.h>
+#include <linux/irqchip/riscv-imsic.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
@@ -125,41 +127,117 @@ static void aplic_init_hw_irqs(struct aplic_priv *priv)
 	writel(0, priv->regs + APLIC_DOMAINCFG);
 }
 
+#ifdef CONFIG_ACPI
+
+static int get_aplic_info(struct acpi_subtable_header *entry, u32 gsi_base,
+			  u32 *nr_irqs, u32 *nr_idcs, u32 *aplic_id)
+{
+	struct acpi_madt_aplic *aplic = (struct acpi_madt_aplic *)entry;
+
+	if (aplic->gsi_base != gsi_base)
+		return 0;
+
+	*nr_irqs = aplic->num_sources;
+	*nr_idcs = aplic->num_idcs;
+	*aplic_id = aplic->id;
+	return 1;
+}
+
+static int parse_madt_aplic_entry(u32 gsi_base, u32 *nr_irqs, u32 *nr_idcs)
+{
+	struct acpi_subtable_header *hdr;
+	unsigned long madt_end, entry;
+	struct acpi_table_madt *madt;
+	int aplic_id = -1;
+
+	if (ACPI_FAILURE(acpi_get_table(ACPI_SIG_MADT, 0,
+					(struct acpi_table_header **)&madt)))
+		return aplic_id;
+
+	entry = (unsigned long)madt;
+	madt_end = entry + madt->header.length;
+
+	/* Parse all entries looking for a match. */
+	entry += sizeof(struct acpi_table_madt);
+	while (entry + sizeof(struct acpi_subtable_header) < madt_end) {
+		hdr = (struct acpi_subtable_header *)entry;
+		if (hdr->type == ACPI_MADT_TYPE_APLIC &&
+		    get_aplic_info(hdr, gsi_base, nr_irqs, nr_idcs, &aplic_id))
+			break;
+
+		entry += hdr->length;
+	}
+
+	acpi_put_table((struct acpi_table_header *)madt);
+
+	return aplic_id;
+}
+
+static const struct acpi_device_id aplic_acpi_match[] = {
+	{ "RSCV0002", 0 },
+	{}
+};
+MODULE_DEVICE_TABLE(acpi, aplic_acpi_match);
+
+#endif
+
 int aplic_setup_priv(struct aplic_priv *priv, struct device *dev, void __iomem *regs)
 {
 	struct of_phandle_args parent;
 	int rc;
 
-	/*
-	 * Currently, only OF fwnode is supported so extend this
-	 * function for ACPI support.
-	 */
-	if (!is_of_node(dev->fwnode))
-		return -EINVAL;
-
 	/* Save device pointer and register base */
 	priv->dev = dev;
 	priv->regs = regs;
 
-	/* Find out number of interrupt sources */
-	rc = of_property_read_u32(to_of_node(dev->fwnode), "riscv,num-sources",
-				  &priv->nr_irqs);
-	if (rc) {
-		dev_err(dev, "failed to get number of interrupt sources\n");
-		return rc;
+	if (is_of_node(dev->fwnode)) {
+		/* Find out number of interrupt sources */
+		rc = of_property_read_u32(to_of_node(dev->fwnode), "riscv,num-sources",
+					  &priv->nr_irqs);
+		if (rc) {
+			dev_err(dev, "failed to get number of interrupt sources\n");
+			return rc;
+		}
+
+		/*
+		 * Find out number of IDCs based on parent interrupts
+		 *
+		 * If "msi-parent" property is present then we ignore the
+		 * APLIC IDCs which forces the APLIC driver to use MSI mode.
+		 */
+		if (!of_property_present(to_of_node(dev->fwnode), "msi-parent")) {
+			while (!of_irq_parse_one(to_of_node(dev->fwnode), priv->nr_idcs, &parent))
+				priv->nr_idcs++;
+		}
+	} else {
+		u64 gsi_base;
+		u32 id, nr_irqs, nr_idcs;
+		acpi_status status;
+
+		if (!acpi_has_method(ACPI_HANDLE(dev), "_GSB"))
+			return -1;
+
+		status = acpi_evaluate_integer(ACPI_HANDLE(dev), "_GSB", NULL, &gsi_base);
+		if (ACPI_FAILURE(status)) {
+			acpi_handle_err(ACPI_HANDLE(dev), "failed to evaluate _GSB method\n");
+				return -1;
+		}
+
+		id = parse_madt_aplic_entry((u32)gsi_base, &nr_irqs, &nr_idcs);
+		if (id < 0) {
+			dev_err(dev, "failed to find APLIC in MADT\n");
+			return -1;
+		}
+		priv->gsi_base = (u32)gsi_base;
+		priv->nr_irqs = nr_irqs;
+		priv->nr_idcs = nr_idcs;
+		priv->id = id;
 	}
 
-	/*
-	 * Find out number of IDCs based on parent interrupts
-	 *
-	 * If "msi-parent" property is present then we ignore the
-	 * APLIC IDCs which forces the APLIC driver to use MSI mode.
-	 */
-	if (!of_property_present(to_of_node(dev->fwnode), "msi-parent")) {
-		while (!of_irq_parse_one(to_of_node(dev->fwnode), priv->nr_idcs, &parent))
-			priv->nr_idcs++;
-	}
-
+#ifdef CONFIG_ACPI
+	riscv_acpi_register_ext_intc(priv->dev->fwnode, priv->gsi_base,
+				     priv->nr_irqs, priv->id, ACPI_RISCV_IRQCHIP_APLIC);
+#endif
 	/* Setup initial state APLIC interrupts */
 	aplic_init_hw_irqs(priv);
 
@@ -186,12 +264,18 @@ static int aplic_probe(struct platform_device *pdev)
 	 */
 	if (is_of_node(dev->fwnode))
 		msi_mode = of_property_present(to_of_node(dev->fwnode), "msi-parent");
+	else
+		msi_mode = imsic_acpi_get_fwnode(NULL) ? 1 : 0;
+
 	if (msi_mode)
 		rc = aplic_msi_setup(dev, regs);
 	else
 		rc = aplic_direct_setup(dev, regs);
 	if (rc)
 		dev_err(dev, "failed to setup APLIC in %s mode\n", msi_mode ? "MSI" : "direct");
+
+	if (!acpi_disabled)
+		acpi_dev_clear_dependencies(ACPI_COMPANION(dev));
 
 	return rc;
 }
@@ -205,6 +289,7 @@ static struct platform_driver aplic_driver = {
 	.driver = {
 		.name		= "riscv-aplic",
 		.of_match_table	= aplic_match,
+		.acpi_match_table = ACPI_PTR(aplic_acpi_match),
 	},
 	.probe = aplic_probe,
 };
