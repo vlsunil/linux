@@ -289,7 +289,7 @@ int pnpacpi_parse_allocated_resource(struct pnp_dev *dev)
 	return 0;
 }
 
-static __init void pnpacpi_parse_dma_option(struct pnp_dev *dev,
+static void pnpacpi_parse_dma_option(struct pnp_dev *dev,
 					    unsigned int option_flags,
 					    struct acpi_resource_dma *p)
 {
@@ -303,7 +303,7 @@ static __init void pnpacpi_parse_dma_option(struct pnp_dev *dev,
 	pnp_register_dma_resource(dev, option_flags, map, flags);
 }
 
-static __init void pnpacpi_parse_irq_option(struct pnp_dev *dev,
+static void pnpacpi_parse_irq_option(struct pnp_dev *dev,
 					    unsigned int option_flags,
 					    struct acpi_resource_irq *p)
 {
@@ -320,7 +320,7 @@ static __init void pnpacpi_parse_irq_option(struct pnp_dev *dev,
 	pnp_register_irq_resource(dev, option_flags, &map, flags);
 }
 
-static __init void pnpacpi_parse_ext_irq_option(struct pnp_dev *dev,
+static void pnpacpi_parse_ext_irq_option(struct pnp_dev *dev,
 					unsigned int option_flags,
 					struct acpi_resource_extended_irq *p)
 {
@@ -344,7 +344,7 @@ static __init void pnpacpi_parse_ext_irq_option(struct pnp_dev *dev,
 	pnp_register_irq_resource(dev, option_flags, &map, flags);
 }
 
-static __init void pnpacpi_parse_port_option(struct pnp_dev *dev,
+static void pnpacpi_parse_port_option(struct pnp_dev *dev,
 					     unsigned int option_flags,
 					     struct acpi_resource_io *io)
 {
@@ -364,7 +364,7 @@ static __init void pnpacpi_parse_fixed_port_option(struct pnp_dev *dev,
 				   0, io->address_length, IORESOURCE_IO_FIXED);
 }
 
-static __init void pnpacpi_parse_mem24_option(struct pnp_dev *dev,
+static void pnpacpi_parse_mem24_option(struct pnp_dev *dev,
 					      unsigned int option_flags,
 					      struct acpi_resource_memory24 *p)
 {
@@ -376,7 +376,7 @@ static __init void pnpacpi_parse_mem24_option(struct pnp_dev *dev,
 				  p->alignment, p->address_length, flags);
 }
 
-static __init void pnpacpi_parse_mem32_option(struct pnp_dev *dev,
+static void pnpacpi_parse_mem32_option(struct pnp_dev *dev,
 					      unsigned int option_flags,
 					      struct acpi_resource_memory32 *p)
 {
@@ -388,7 +388,7 @@ static __init void pnpacpi_parse_mem32_option(struct pnp_dev *dev,
 				  p->alignment, p->address_length, flags);
 }
 
-static __init void pnpacpi_parse_fixed_mem32_option(struct pnp_dev *dev,
+static void pnpacpi_parse_fixed_mem32_option(struct pnp_dev *dev,
 					unsigned int option_flags,
 					struct acpi_resource_fixed_memory32 *p)
 {
@@ -400,7 +400,7 @@ static __init void pnpacpi_parse_fixed_mem32_option(struct pnp_dev *dev,
 				  0, p->address_length, flags);
 }
 
-static __init void pnpacpi_parse_address_option(struct pnp_dev *dev,
+static void pnpacpi_parse_address_option(struct pnp_dev *dev,
 						unsigned int option_flags,
 						struct acpi_resource *r)
 {
@@ -427,7 +427,7 @@ static __init void pnpacpi_parse_address_option(struct pnp_dev *dev,
 					   IORESOURCE_IO_FIXED);
 }
 
-static __init void pnpacpi_parse_ext_address_option(struct pnp_dev *dev,
+static void pnpacpi_parse_ext_address_option(struct pnp_dev *dev,
 						    unsigned int option_flags,
 						    struct acpi_resource *r)
 {
@@ -451,7 +451,7 @@ struct acpipnp_parse_option_s {
 	unsigned int option_flags;
 };
 
-static __init acpi_status pnpacpi_option_resource(struct acpi_resource *res,
+static acpi_status pnpacpi_option_resource(struct acpi_resource *res,
 						  void *data)
 {
 	int priority;
@@ -547,7 +547,7 @@ static __init acpi_status pnpacpi_option_resource(struct acpi_resource *res,
 	return AE_OK;
 }
 
-int __init pnpacpi_parse_resource_option_data(struct pnp_dev *dev)
+int pnpacpi_parse_resource_option_data(struct pnp_dev *dev)
 {
 	struct acpi_device *acpi_dev = dev->data;
 	acpi_handle handle = acpi_dev->handle;

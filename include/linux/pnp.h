@@ -347,6 +347,7 @@ static inline struct acpi_device *pnp_acpi_device(struct pnp_dev *dev)
 		return dev->data;
 	return NULL;
 }
+
 #else
 #define pnp_acpi_device(dev) 0
 #endif
@@ -513,5 +514,11 @@ static inline void pnp_unregister_driver(struct pnp_driver *drv) { }
 #define module_pnp_driver(__pnp_driver) \
 	module_driver(__pnp_driver, pnp_register_driver, \
 				    pnp_unregister_driver)
+
+#ifdef CONFIG_ARCH_ACPI_DEFERRED_GSI
+void pnpacpi_init_2(struct acpi_device *adev);
+#else
+static inline void pnpacpi_init_2(struct acpi_device *adev) { }
+#endif
 
 #endif /* _LINUX_PNP_H */
