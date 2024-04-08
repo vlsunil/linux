@@ -26,7 +26,7 @@ static int num;
 #define TEST_ALPHA(c) \
 	if (!('A' <= (c) && (c) <= 'Z')) \
 		return 0
-static int __init ispnpidacpi(const char *id)
+static int ispnpidacpi(const char *id)
 {
 	TEST_ALPHA(id[0]);
 	TEST_ALPHA(id[1]);
@@ -194,7 +194,7 @@ struct pnp_protocol pnpacpi_protocol = {
 };
 EXPORT_SYMBOL(pnpacpi_protocol);
 
-static const char *__init pnpacpi_get_id(struct acpi_device *device)
+static const char *pnpacpi_get_id(struct acpi_device *device)
 {
 	struct acpi_hardware_id *id;
 
@@ -206,7 +206,7 @@ static const char *__init pnpacpi_get_id(struct acpi_device *device)
 	return NULL;
 }
 
-static int __init pnpacpi_add_device(struct acpi_device *device)
+static int pnpacpi_add_device(struct acpi_device *device)
 {
 	struct pnp_dev *dev;
 	const char *pnpid;
@@ -283,6 +283,23 @@ static int __init pnpacpi_add_device(struct acpi_device *device)
 	return 0;
 }
 
+int pnpacpi_disabled;
+
+#ifdef CONFIG_ARCH_ACPI_DEFERRED_GSI
+void pnpacpi_init_2(struct acpi_device *adev)
+{
+	if (acpi_disabled || pnpacpi_disabled)
+		return;
+
+	if (!adev)
+		return;
+
+	if (acpi_is_pnp_device(adev) && acpi_dev_ready_for_enumeration(adev))
+		pnpacpi_add_device(adev);
+}
+
+#endif
+
 static acpi_status __init pnpacpi_add_device_handler(acpi_handle handle,
 						     u32 lvl, void *context,
 						     void **rv)
@@ -296,7 +313,6 @@ static acpi_status __init pnpacpi_add_device_handler(acpi_handle handle,
 	return AE_OK;
 }
 
-int pnpacpi_disabled __initdata;
 static int __init pnpacpi_init(void)
 {
 	if (acpi_disabled || pnpacpi_disabled) {

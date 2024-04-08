@@ -19,6 +19,7 @@
 #include <linux/dma-map-ops.h>
 #include <linux/platform_data/x86/apple.h>
 #include <linux/pgtable.h>
+#include <linux/pnp.h>
 #include <linux/crc32.h>
 #include <linux/dma-direct.h>
 
@@ -2350,6 +2351,9 @@ static void acpi_scan_clear_dep_fn(struct work_struct *work)
 	acpi_scan_lock_acquire();
 	acpi_bus_attach(cdw->adev, (void *)true);
 	acpi_scan_lock_release();
+
+	if (IS_ENABLED(CONFIG_ARCH_ACPI_DEFERRED_GSI) && IS_ENABLED(CONFIG_PNPACPI))
+		pnpacpi_init_2(cdw->adev);
 
 	acpi_dev_put(cdw->adev);
 	kfree(cdw);
