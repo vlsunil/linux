@@ -789,7 +789,7 @@ bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 					 ext_irq->shareable, ext_irq->wake_capable,
 					 false);
 		else
-			irqresource_disabled(res, 0);
+			irqresource_disabled(res, ext_irq->interrupts[index]);
 		break;
 	default:
 		res->flags = 0;
