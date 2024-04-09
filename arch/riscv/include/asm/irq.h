@@ -26,6 +26,16 @@ struct fwnode_handle *riscv_get_intc_hwnode(void);
 #define APLIC_PLIC_ID(x) ((x) >> 24)
 #define IDC_CONTEXT_ID(x) ((x) & 0x0000ffff)
 
+enum riscv_irqchip_type {
+	ACPI_RISCV_IRQCHIP_INTC		= 0x00,
+	ACPI_RISCV_IRQCHIP_IMSIC	= 0x01,
+	ACPI_RISCV_IRQCHIP_PLIC		= 0x02,
+	ACPI_RISCV_IRQCHIP_APLIC	= 0x03,
+};
+
+struct fwnode_handle *riscv_acpi_get_gsi_domain_id(u32 gsi);
+int riscv_acpi_register_ext_intc(struct fwnode_handle *fwnode, u32 gsi_base, u32 nr_irqs,
+				 u32 id, enum riscv_irqchip_type type);
 int __init acpi_get_intc_index_hartid(u32 index, unsigned long *hartid);
 int acpi_get_ext_intc_parent_hartid(u8 id, u32 idx, unsigned long *hartid);
 void acpi_get_plic_nr_contexts(u8 id, int *nr_contexts);
