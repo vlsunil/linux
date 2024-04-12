@@ -1464,6 +1464,7 @@ static inline int acpi_parse_spcr(bool enable_earlycon, bool enable_console)
 int acpi_irq_get(acpi_handle handle, unsigned int index, struct resource *res);
 int acpi_get_gsi_parent_fwnode(acpi_handle handle, unsigned int index,
 			       struct fwnode_handle **parent);
+int acpi_add_prt_devlink(struct fwnode_handle *fwnode);
 #else
 static inline
 int acpi_irq_get(acpi_handle handle, unsigned int index, struct resource *res)
@@ -1474,6 +1475,12 @@ int acpi_irq_get(acpi_handle handle, unsigned int index, struct resource *res)
 static inline
 int acpi_get_gsi_parent_fwnode(acpi_handle handle, unsigned int index,
 			       struct fwnode_handle **parent)
+{
+	return 0;
+}
+
+static inline int acpi_add_prt_devlink(acpi_handle handle, unsigned int index,
+				       struct fwnode_handle **parent)
 {
 	return 0;
 }

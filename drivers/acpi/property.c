@@ -1654,6 +1654,9 @@ static int acpi_fwnode_add_links(struct fwnode_handle *fwnode)
 	if (!IS_ENABLED(CONFIG_RISCV))
 		return 0;
 
+	if (acpi_has_method(ACPI_HANDLE_FWNODE(fwnode), "_PRT"))
+		acpi_add_prt_devlink(fwnode);
+
 	for (i = 0;
 		   acpi_get_gsi_parent_fwnode(ACPI_HANDLE_FWNODE(fwnode), i, &parent_fwnode);
 		   i++)

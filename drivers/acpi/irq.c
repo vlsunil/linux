@@ -168,6 +168,7 @@ static inline void acpi_irq_parse_one_match(struct fwnode_handle *fwnode,
 {
 	if (!fwnode)
 		return;
+pr_info("acpi_irq_parse_one_match: hwirq = %d\n", hwirq);
 	ctx->rc = 0;
 	*ctx->res_flags = acpi_dev_irq_flags(triggering, polarity, shareable, wake_capable);
 	ctx->fwspec->fwnode = fwnode;
@@ -372,3 +373,49 @@ int acpi_get_gsi_parent_fwnode(acpi_handle handle,
 	return 1;
 }
 EXPORT_SYMBOL_GPL(acpi_get_gsi_parent_fwnode);
+
+int acpi_add_prt_devlink(struct fwnode_handle *fwnode)
+{
+	acpi_handle handle = ACPI_HANDLE_FWNODE(fwnode);
+	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
+	struct acpi_pci_routing_table *entry;
+	struct fwnode_handle *parent_fwnode;
+	struct acpi_device *adev;
+	acpi_handle parent_handle;
+	acpi_status status;
+	int i;
+
+	status = acpi_get_irq_routing_table(handle, &buffer);
+	if (ACPI_FAILURE(status)) {
+		kfree(buffer.pointer);
+		return -1;
+	}
+
+	entry = buffer.pointer;
+	while (entry && (entry->length > 0)) {
+		if (entry->source[0]) {
+			acpi_get_handle(handle, entry->source, &parent_handle);
+			adev = acpi_fetch_acpi_dev(parent_handle);
+			if (!adev)
+				return -1;
+
+			parent_fwnode = acpi_fwnode_handle(adev);
+			for (i = 0;
+			     acpi_get_gsi_parent_fwnode(parent_handle, i, &parent_fwnode);
+			     i++)
+				fwnode_link_add(fwnode, parent_fwnode, 0);
+		} else {
+			parent_fwnode = acpi_get_gsi_domain_id(entry->source_index);
+		}
+
+		if (parent_fwnode) {
+			fwnode_link_add(fwnode, parent_fwnode, 0);
+		}
+
+		entry = (struct acpi_pci_routing_table *)
+		    ((unsigned long)entry + entry->length);
+	}
+	kfree(buffer.pointer);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(acpi_add_prt_devlink);

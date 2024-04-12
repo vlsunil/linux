@@ -98,6 +98,7 @@ int fwnode_link_add(struct fwnode_handle *con, struct fwnode_handle *sup,
 {
 	int ret;
 
+pr_info("fwnode_link_add: con:0x%llx sup:0x%llx\n", con, sup);
 	mutex_lock(&fwnode_link_lock);
 	ret = __fwnode_link_add(con, sup, flags);
 	mutex_unlock(&fwnode_link_lock);

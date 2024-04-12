@@ -1912,7 +1912,7 @@ static int acpi_add_single_object(struct acpi_device **child,
 	acpi_power_add_remove_device(device, true);
 	acpi_device_add_finalize(device);
 
-	acpi_handle_debug(handle, "Added as %s, parent %s\n",
+	acpi_handle_info(handle, "Added as %s, parent %s\n",
 			  dev_name(&device->dev), device->dev.parent ?
 				dev_name(device->dev.parent) : "(null)");
 
