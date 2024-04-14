@@ -727,8 +727,8 @@ done:
 	}
 
 	if (!acpi_disabled) {
-		riscv_acpi_register_ext_intc(priv->dev->fwnode, priv->gsi_base,
-					     priv->nr_irqs, priv->id, ACPI_RISCV_IRQCHIP_PLIC);
+		//riscv_acpi_register_ext_intc(priv->dev->fwnode, priv->gsi_base,
+		//			     priv->nr_irqs, priv->id, ACPI_RISCV_IRQCHIP_PLIC);
 		acpi_dev_clear_dependencies(ACPI_COMPANION(dev));
 	}
 

@@ -13,6 +13,7 @@
 #include <linux/acpi_iort.h>
 #include <linux/acpi_viot.h>
 #include <linux/iommu.h>
+#include <linux/irq.h>
 #include <linux/signal.h>
 #include <linux/kthread.h>
 #include <linux/dmi.h>
@@ -835,6 +836,7 @@ static const char * const acpi_honor_dep_ids[] = {
 	"INTC10CF", /* IVSC (MTL) driver must be loaded to allow i2c access to camera sensors */
 	"RSCV0001", /* RISC-V PLIC */
 	"RSCV0002", /* RISC-V APLIC */
+	"PNP0C0F",
 	NULL
 };
 
@@ -2036,6 +2038,7 @@ static int acpi_scan_add_dep(acpi_handle handle, struct acpi_handle_list *dep_de
 	u32 count;
 	int i;
 
+pr_info("acpi_scan_add_dep: ENTER: dep_devices->count = %d\n", dep_devices->count);
 	for (count = 0, i = 0; i < dep_devices->count; i++) {
 		struct acpi_device_info *info;
 		struct acpi_dep_data *dep;
@@ -2065,6 +2068,7 @@ static int acpi_scan_add_dep(acpi_handle handle, struct acpi_handle_list *dep_de
 		dep->consumer = handle;
 		dep->honor_dep = honor_dep;
 
+pr_info("acpi_scan_add_dep: Supplier = 0x%llx, consumer = 0x%llx\n", dep->supplier, dep->consumer);
 		mutex_lock(&acpi_dep_list_lock);
 		list_add_tail(&dep->node , &acpi_dep_list);
 		mutex_unlock(&acpi_dep_list_lock);
@@ -2074,11 +2078,197 @@ static int acpi_scan_add_dep(acpi_handle handle, struct acpi_handle_list *dep_de
 	return count;
 }
 
+
+/**
+ * acpi_walk_dep_device_list - Apply a callback to every entry in acpi_dep_list
+ * @handle:	The ACPI handle of the supplier device
+ * @callback:	Pointer to the callback function to apply
+ * @data:	Pointer to some data to pass to the callback
+ *
+ * The return value of the callback determines this function's behaviour. If 0
+ * is returned we continue to iterate over acpi_dep_list. If a positive value
+ * is returned then the loop is broken but this function returns 0. If a
+ * negative value is returned by the callback then the loop is broken and that
+ * value is returned as the final error.
+ */
+static int acpi_walk_dep_device_list(acpi_handle handle,
+				int (*callback)(struct acpi_dep_data *, void *),
+				void *data)
+{
+	struct acpi_dep_data *dep, *tmp;
+	int ret = 0;
+
+	mutex_lock(&acpi_dep_list_lock);
+	list_for_each_entry_safe(dep, tmp, &acpi_dep_list, node) {
+		if (dep->supplier == handle) {
+			ret = callback(dep, data);
+			if (ret)
+				break;
+		}
+	}
+	mutex_unlock(&acpi_dep_list_lock);
+
+	return ret > 0 ? 0 : ret;
+}
+
+struct acpi_dep_consumer_data {
+	acpi_handle handle;
+	int rc;
+};
+
+static int acpi_handle_check_consumer_cb(struct acpi_dep_data *dep, void *data)
+{
+	struct acpi_dep_consumer_data *consumer = (struct acpi_dep_consumer_data *)data;
+pr_info("acpi_handle_check_consumer_cb: dep->consumer = 0x%llx: consumer->handle == 0x%llx\n", dep->consumer, consumer->handle);
+	if (dep->consumer == consumer->handle) {
+		consumer->rc = 0;
+		return 1;
+	}
+	consumer->rc = -ENODEV;
+	return 0;
+}
+/**
+ * acpi_handle_check_consumer - Return the next adev dependent on @supplier
+ * @supplier: Pointer to the dependee device
+ * @start: Pointer to the current dependent device
+ *
+ * Returns the next &struct acpi_device which declares itself dependent on
+ * @supplier via the _DEP buffer, parsed from the acpi_dep_list.
+ *
+ * If the returned adev is not passed as @start to this function, the caller is
+ * responsible for putting the reference to adev when it is no longer needed.
+ */
+int acpi_handle_check_consumer(acpi_handle supplier, acpi_handle consumer)
+{
+pr_info("acpi_handle_check_consumer: Supplier = 0x%llx, consumer = 0x%llx\n", supplier,consumer);
+	struct acpi_dep_consumer_data ctx = { consumer, -ENODEV };
+	acpi_walk_dep_device_list(supplier,
+					 acpi_handle_check_consumer_cb, (void *)&ctx);
+	return ctx.rc ? 0: 1;
+}
+EXPORT_SYMBOL_GPL(acpi_handle_check_consumer);
+
+#ifdef CONFIG_ARCH_ACPI_DEFERRED_GSI
+static u32 arch_acpi_add_prt_dep(acpi_handle handle)
+{
+	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
+	struct acpi_pci_routing_table *entry;
+	struct acpi_handle_list dep_devices;
+	acpi_handle gsi_handle;
+	acpi_handle parent_handle;
+	acpi_handle link_handle;
+	acpi_status status;
+	u32 count = 0;
+	int i = 0;
+
+	if (!acpi_has_method(handle, "_PRT"))
+		return 0;
+
+pr_info("arch_acpi_add_prt_dep: PCI HB Handle = 0x%llx\n", handle);
+	status = acpi_get_irq_routing_table(handle, &buffer);
+	if (ACPI_FAILURE(status)) {
+		kfree(buffer.pointer);
+		return 0;
+	}
+
+	entry = buffer.pointer;
+	while (entry && (entry->length > 0)) {
+		if (entry->source[0]) {
+			acpi_get_handle(handle, entry->source, &link_handle);
+			status = acpi_get_parent(link_handle, &parent_handle);
+			if (ACPI_FAILURE(status))
+				continue;
+pr_info("LINK's parent = PCI HB: LINK handle = 0x%llx\n", link_handle);
+			for (i = 0;
+			     acpi_irq_get_dep(link_handle, i, &gsi_handle);
+			     i++) {
+				dep_devices.count = 1;
+				dep_devices.handles = kcalloc(1, sizeof(*dep_devices.handles), GFP_KERNEL);
+				if (!dep_devices.handles)
+					continue;
+
+				dep_devices.handles[0] = gsi_handle;
+				count += acpi_scan_add_dep(handle, &dep_devices);
+			}
+			if (handle != parent_handle) {
+pr_info("LINK's parent NOT = PCI HB\n");
+				dep_devices.count = 1;
+				dep_devices.handles = kcalloc(1, sizeof(*dep_devices.handles), GFP_KERNEL);
+				if (!dep_devices.handles)
+					continue;
+
+				dep_devices.handles[0] = link_handle;
+				count += acpi_scan_add_dep(handle, &dep_devices);
+			}
+		} else {
+			gsi_handle = riscv_acpi_get_gsi_handle(entry->source_index);
+			dep_devices.count = 1;
+			dep_devices.handles = kcalloc(1, sizeof(*dep_devices.handles), GFP_KERNEL);
+			if (!dep_devices.handles)
+				continue;
+
+			dep_devices.handles[0] = gsi_handle;
+			count += acpi_scan_add_dep(handle, &dep_devices);
+		}
+
+		entry = (struct acpi_pci_routing_table *)
+			((unsigned long)entry + entry->length);
+	}
+
+	kfree(buffer.pointer);
+	return count;
+}
+
+static u32 arch_acpi_add_irq_dep(acpi_handle handle)
+{
+	struct acpi_handle_list dep_devices;
+	acpi_handle gsi_handle, parent_handle;
+	acpi_status status;
+	u32 count = 0;
+	int i;
+
+	if (!acpi_has_method(handle, "_PRT")) {
+		status = acpi_get_parent(handle, &parent_handle);
+		for (i = 0;
+		     acpi_irq_get_dep(handle, i, &gsi_handle);
+		     i++) {
+			if (!acpi_handle_check_consumer(gsi_handle, parent_handle)) {
+	pr_info("arch_acpi_add_irq_dep: Parent is not added to consumer list\n");
+				dep_devices.count = 1;
+				dep_devices.handles = kcalloc(1, sizeof(*dep_devices.handles), GFP_KERNEL);
+				if (!dep_devices.handles)
+					continue;
+
+				dep_devices.handles[0] = gsi_handle;
+				count += acpi_scan_add_dep(handle, &dep_devices);
+			} else {
+	pr_info("arch_acpi_add_irq_dep: Parent IS added to consumer list\n");
+			}
+		}
+	} else {
+		count += arch_acpi_add_prt_dep(handle);
+	}
+
+	return count;
+
+}
+static u32 arch_acpi_add_auto_dep(acpi_handle handle)
+{
+	u32 count = 0;
+
+	count += arch_acpi_add_irq_dep(handle);
+	return count;
+}
+
+#endif
+
 static u32 acpi_scan_check_dep(acpi_handle handle)
 {
 	struct acpi_handle_list dep_devices;
 	u32 count = 0;
 
+	if (IS_ENABLED(CONFIG_ARCH_ACPI_DEFERRED_GSI))
+		count += arch_acpi_add_auto_dep(handle);
 	/*
 	 * Check for _HID here to avoid deferring the enumeration of:
 	 * 1. PCI devices.
@@ -2086,11 +2276,11 @@ static u32 acpi_scan_check_dep(acpi_handle handle)
 	 * Still, checking for _HID catches more then just these cases ...
 	 */
 	if (!acpi_has_method(handle, "_DEP") || !acpi_has_method(handle, "_HID"))
-		return 0;
+		return count;
 
 	if (!acpi_evaluate_reference(handle, "_DEP", NULL, &dep_devices)) {
 		acpi_handle_debug(handle, "Failed to evaluate _DEP.\n");
-		return 0;
+		return count;
 	}
 
 	count += acpi_scan_add_dep(handle, &dep_devices);
@@ -2412,38 +2602,6 @@ static int acpi_scan_clear_dep(struct acpi_dep_data *dep, void *data)
 		dep->met = true;
 
 	return 0;
-}
-
-/**
- * acpi_walk_dep_device_list - Apply a callback to every entry in acpi_dep_list
- * @handle:	The ACPI handle of the supplier device
- * @callback:	Pointer to the callback function to apply
- * @data:	Pointer to some data to pass to the callback
- *
- * The return value of the callback determines this function's behaviour. If 0
- * is returned we continue to iterate over acpi_dep_list. If a positive value
- * is returned then the loop is broken but this function returns 0. If a
- * negative value is returned by the callback then the loop is broken and that
- * value is returned as the final error.
- */
-static int acpi_walk_dep_device_list(acpi_handle handle,
-				int (*callback)(struct acpi_dep_data *, void *),
-				void *data)
-{
-	struct acpi_dep_data *dep, *tmp;
-	int ret = 0;
-
-	mutex_lock(&acpi_dep_list_lock);
-	list_for_each_entry_safe(dep, tmp, &acpi_dep_list, node) {
-		if (dep->supplier == handle) {
-			ret = callback(dep, data);
-			if (ret)
-				break;
-		}
-	}
-	mutex_unlock(&acpi_dep_list_lock);
-
-	return ret > 0 ? 0 : ret;
 }
 
 /**

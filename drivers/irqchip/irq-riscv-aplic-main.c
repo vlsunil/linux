@@ -234,10 +234,10 @@ int aplic_setup_priv(struct aplic_priv *priv, struct device *dev, void __iomem *
 		priv->id = id;
 	}
 
-#ifdef CONFIG_ACPI
-	riscv_acpi_register_ext_intc(priv->dev->fwnode, priv->gsi_base,
-				     priv->nr_irqs, priv->id, ACPI_RISCV_IRQCHIP_APLIC);
-#endif
+//#ifdef CONFIG_ACPI
+	//riscv_acpi_register_ext_intc(priv->dev->fwnode, priv->gsi_base,
+	//			     priv->nr_irqs, priv->id, ACPI_RISCV_IRQCHIP_APLIC);
+//#endif
 	/* Setup initial state APLIC interrupts */
 	aplic_init_hw_irqs(priv);
 
