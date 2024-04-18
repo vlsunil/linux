@@ -2614,6 +2614,7 @@ struct irq_domain *pci_host_bridge_acpi_msi_domain(struct pci_bus *bus);
 
 void
 pci_msi_register_fwnode_provider(struct fwnode_handle *(*fn)(struct device *));
+void pci_msi_register_default_domain(struct irq_domain *msidom);
 bool pci_pr3_present(struct pci_dev *pdev);
 #else
 static inline struct irq_domain *

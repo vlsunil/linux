@@ -278,6 +278,7 @@ struct irq_domain * __init native_create_pci_msi_domain(void)
 void __init x86_create_pci_msi_domain(void)
 {
 	x86_pci_msi_default_domain = x86_init.irqs.create_pci_msi_domain();
+	pci_msi_register_default_domain(x86_pci_msi_default_domain);
 }
 
 /* Keep around for hyperV */

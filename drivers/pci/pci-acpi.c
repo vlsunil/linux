@@ -1461,6 +1461,7 @@ void pci_acpi_cleanup(struct device *dev, struct acpi_device *adev)
 }
 
 static struct fwnode_handle *(*pci_msi_get_fwnode_cb)(struct device *dev);
+static struct irq_domain *pci_msi_default_domain;
 
 /**
  * pci_msi_register_fwnode_provider - Register callback to retrieve fwnode
@@ -1477,6 +1478,17 @@ pci_msi_register_fwnode_provider(struct fwnode_handle *(*fn)(struct device *))
 }
 
 /**
+ * pci_msi_register_default_domain - Register default MSI domain
+ *
+ * This should be called by irqchip driver, which is the parent of
+ * the MSI domain to provide callback interface to query fwnode.
+ */
+void pci_msi_register_default_domain(struct irq_domain *msidom)
+{
+	pci_msi_default_domain = msidom;
+}
+
+/**
  * pci_host_bridge_acpi_msi_domain - Retrieve MSI domain of a PCI host bridge
  * @bus:      The PCI host bridge bus.
  *
@@ -1488,6 +1500,9 @@ pci_msi_register_fwnode_provider(struct fwnode_handle *(*fn)(struct device *))
 struct irq_domain *pci_host_bridge_acpi_msi_domain(struct pci_bus *bus)
 {
 	struct fwnode_handle *fwnode;
+
+	if (pci_msi_default_domain)
+		return pci_msi_default_domain;
 
 	if (!pci_msi_get_fwnode_cb)
 		return NULL;
