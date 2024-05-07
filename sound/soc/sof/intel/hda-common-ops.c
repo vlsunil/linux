@@ -14,7 +14,7 @@
 #include "hda.h"
 #include "../sof-audio.h"
 
-struct snd_sof_dsp_ops sof_hda_common_ops = {
+const struct snd_sof_dsp_ops sof_hda_common_ops = {
 	/* probe/remove/shutdown */
 	.probe_early	= hda_dsp_probe_early,
 	.probe		= hda_dsp_probe,
@@ -105,3 +105,4 @@ struct snd_sof_dsp_ops sof_hda_common_ops = {
 
 	.dsp_arch_ops = &sof_xtensa_arch_ops,
 };
+EXPORT_SYMBOL_NS(sof_hda_common_ops, SND_SOC_SOF_INTEL_HDA_GENERIC);
