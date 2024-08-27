@@ -451,13 +451,13 @@ static int plic_parse_nr_irqs_and_contexts(struct fwnode_handle *fwnode,
 	if (!is_of_node(fwnode)) {
 		rc = riscv_acpi_get_gsi_info(fwnode, gsi_base, id, nr_irqs, NULL);
 		if (rc) {
-			dev_err(dev, "failed to find GSI mapping\n");
+			pr_err("%pfwP: failed to find GSI mapping\n", fwnode);
 			return rc;
 		}
 
 		*nr_contexts = acpi_rintc_get_plic_nr_contexts(*id);
 		if (WARN_ON(!*nr_contexts)) {
-			dev_err(dev, "no PLIC context available\n");
+			pr_err("%pfwP: no PLIC context available\n", fwnode);
 			return -EINVAL;
 		}
 
@@ -535,7 +535,9 @@ static int plic_probe(struct fwnode_handle *fwnode)
 		if (!regs)
 			return -ENOMEM;
 	} else {
-		return -ENODEV;
+		regs = devm_platform_ioremap_resource(to_platform_device(fwnode->dev), 0);
+		if (IS_ERR(regs))
+			return PTR_ERR(regs);
 	}
 
 	error = plic_parse_nr_irqs_and_contexts(fwnode, &nr_irqs, &nr_contexts, &gsi_base, &id);
@@ -675,7 +677,7 @@ done:
 
 #ifdef CONFIG_ACPI
 	if (!acpi_disabled)
-		acpi_dev_clear_dependencies(ACPI_COMPANION(dev));
+		acpi_dev_clear_dependencies(ACPI_COMPANION(fwnode->dev));
 #endif
 
 	pr_info("%pfwP: mapped %d interrupts with %d handlers for %d contexts.\n",
