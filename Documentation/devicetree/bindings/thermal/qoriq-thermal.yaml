@@ -13,6 +13,8 @@ maintainers:
 
 $ref: thermal-sensor.yaml#
 
+$ref: thermal-sensor.yaml#
+
 properties:
   compatible:
     description: |
