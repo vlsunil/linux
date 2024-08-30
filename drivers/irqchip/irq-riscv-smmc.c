@@ -220,7 +220,7 @@ static int smmc_parse_package_resource(struct platform_device *pdev, struct smmc
 		goto end;
 	}
 
-	for (i = 0; i < smmc_obj->package.count; i++) {
+	for (i = 1; i < smmc_obj->package.count; i++) {
 		tmp_obj = &smmc_obj->package.elements[i];
 		if (tmp_obj->type != ACPI_TYPE_PACKAGE) {
 			pr_err("Unsupported CFGN object found at %i index of type %d\n", i, tmp_obj->type);
@@ -231,6 +231,7 @@ static int smmc_parse_package_resource(struct platform_device *pdev, struct smmc
 				i, tmp_obj->package.count);
 			goto end;
 		}
+
 
 		res = devm_kzalloc(dev, sizeof(*res), GFP_KERNEL);
 		if (!res)
@@ -337,7 +338,7 @@ static int smmc_probe(struct platform_device *pdev)
 }
 
 static const struct acpi_device_id smmc_acpi_match[] = {
-	{ "RSCV0005", 0 },
+	{ "ACPI0019", 0 },
 	{}
 };
 MODULE_DEVICE_TABLE(acpi, smmc_acpi_match);
