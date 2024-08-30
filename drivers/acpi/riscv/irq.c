@@ -129,6 +129,74 @@ static int __init riscv_acpi_register_ext_intc(u32 gsi_base, u32 nr_irqs, u32 nr
 	return 0;
 }
 
+static int __init riscv_acpi_extract_num_gsi(acpi_handle handle)
+{
+	union acpi_object *smmc_obj = NULL, *num_gsi_obj;
+	struct acpi_buffer buffer = {ACPI_ALLOCATE_BUFFER, NULL};
+	acpi_status status = AE_OK;
+	int num_gsis = 0;
+
+	status = acpi_evaluate_object_typed(handle, "CFGN", NULL,
+					    &buffer, ACPI_TYPE_PACKAGE);
+	if (ACPI_FAILURE(status))
+		return -ENODEV;
+
+	smmc_obj = buffer.pointer;
+	if (!smmc_obj) {
+		pr_err("Invalid SMMC data\n");
+		return -ENODEV;
+	}
+
+	if (smmc_obj->package.count != 3)
+		goto out;
+
+	num_gsi_obj = &smmc_obj->package.elements[0];
+	num_gsis = num_gsi_obj->integer.value;
+out:
+	kfree(buffer.pointer);
+	return num_gsis;
+}
+
+static acpi_status __init riscv_acpi_create_gsi_map_smmc(acpi_handle handle, u32 level,
+							 void *context, void **return_value)
+{
+	acpi_status status;
+	u64 gbase;
+	int num_gsis;
+
+	if (!acpi_has_method(handle, "CFGN")) {
+		acpi_handle_err(handle, "CFGN method not found\n");
+		return AE_ERROR;
+	}
+
+	if (!acpi_has_method(handle, "_GSB")) {
+		acpi_handle_err(handle, "_GSB method not found\n");
+		return AE_ERROR;
+	}
+
+	status = acpi_evaluate_integer(handle, "_GSB", NULL, &gbase);
+	if (ACPI_FAILURE(status)) {
+		acpi_handle_err(handle, "failed to evaluate _GSB method\n");
+		return status;
+	}
+
+	num_gsis = riscv_acpi_extract_num_gsi(handle);
+	if (num_gsis <= 0) {
+		acpi_handle_err(handle, "Number of GSIs is not valid\n");
+		return AE_ERROR;
+	}
+
+	riscv_acpi_register_ext_intc(gbase, num_gsis, 0, 0, ACPI_RISCV_IRQCHIP_SMMC);
+
+	status = riscv_acpi_update_gsi_handle((u32)gbase, handle);
+	if (ACPI_FAILURE(status)) {
+		acpi_handle_err(handle, "failed to find the GSI mapping entry\n");
+		return status;
+	}
+
+	return AE_OK;
+}
+
 static acpi_status __init riscv_acpi_create_gsi_map(acpi_handle handle, u32 level,
 						    void *context, void **return_value)
 {
@@ -183,6 +251,9 @@ void __init riscv_acpi_init_gsi_mapping(void)
 
 	if (acpi_table_parse_madt(ACPI_MADT_TYPE_APLIC, riscv_acpi_aplic_parse_madt, 0) > 0)
 		acpi_get_devices("RSCV0002", riscv_acpi_create_gsi_map, NULL, NULL);
+
+	/* Unlike PLIC/APLIC, SMMC doesn't have MADT */
+	acpi_get_devices("ACPI0019", riscv_acpi_create_gsi_map_smmc, NULL, NULL);
 }
 
 static acpi_handle riscv_acpi_get_gsi_handle(u32 gsi)
